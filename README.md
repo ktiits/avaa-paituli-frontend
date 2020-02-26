@@ -1,5 +1,32 @@
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+# Paituli frontend
+
+## Setup
+Create a file .env.local using the .env.local.example file as an example.
+
+#### Code styling
+
+Code style is enforced with [Prettier](https://prettier.io/).
+
+Component names are PascalCase and so are component file names.
+
+#### Files and folder structure
+
+`src/components/`: React components<br />
+`src/store/`: Redux store<br />
+`public/`: public assets. html, images etc.
+
+#### Component structure
+
+Components are written as [functions](https://reactjs.org/docs/components-and-props.html) 
+
+#### State management
+
+Application state is managed by [React Redux](https://react-redux.js.org/) with the help of [Redux Toolkit](https://redux-toolkit.js.org/) to ease some boilerplate.
+
+Asynchronous actions are handled with [Redux Thunk](https://github.com/reduxjs/redux-thunk) middleware that comes embedded in Redux Toolkit.
+
 ## Available Scripts
 
 In the project directory, you can run:
@@ -37,32 +64,6 @@ Instead, it will copy all the configuration files and the transitive dependencie
 
 You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
 
-## Learn More
+### `npm run prettier`
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: https://facebook.github.io/create-react-app/docs/code-splitting
-
-### Analyzing the Bundle Size
-
-This section has moved here: https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size
-
-### Making a Progressive Web App
-
-This section has moved here: https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app
-
-### Advanced Configuration
-
-This section has moved here: https://facebook.github.io/create-react-app/docs/advanced-configuration
-
-### Deployment
-
-This section has moved here: https://facebook.github.io/create-react-app/docs/deployment
-
-### `npm run build` fails to minify
-
-This section has moved here: https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify
+Prettify all .js files in the project.
