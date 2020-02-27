@@ -4,33 +4,31 @@ import * as R from 'ramda'
 
 import { API_URL, PATH_DATASETS } from '../../constants'
 
-const datasets = createSlice({
-  name: 'datasets',
-  initialState: {
-    producers: [],
-    selectedProducer: ''
-  },
-  reducers: {
-    set: (state, action) => {
-      state.producers = extractProducers(action.payload)
-    },
-    setProducer: (state, action) => {
-      state.selectedProducer = action.payload
-    }
-  }
-})
+const initialState = {
+  datasets: [],
+  producers: [],
+  selectedProducer: '',
+  selectableData: [],
+  selectedData: ''
+}
 
-export function fetchDatasets() {
-  return dispatch => {
-    return axios
-      .get(API_URL + PATH_DATASETS)
-      .then(response => {
-        dispatch(datasets.actions.set(response.data))
-      })
-      .catch(error => {
-        throw error
-      })
-  }
+const setDatasets = (state, action) => {
+  state.datasets = action.payload
+  state.producers = extractProducers(action.payload)
+  state.selectableData = extractDataByProducer(state.selectedProducer)(
+    state.datasets
+  )
+}
+
+const setSelectedProducer = (state, action) => {
+  state.selectedProducer = action.payload
+  state.selectableData = extractDataByProducer(state.selectedProducer)(
+    state.datasets
+  )
+}
+
+const setSelectedData = (state, action) => {
+  state.selectedData = action.payload
 }
 
 const extractProducers = R.pipe(
@@ -42,14 +40,39 @@ const extractProducers = R.pipe(
   R.sortWith([R.ascend(R.prop('fi'))])
 )
 
-const extractDatasets = R.pipe(
-  R.map(dataset => ({
-    producer: dataset.org_fin,
-    fi: dataset.name_fin,
-    en: dataset.name_eng
-  })),
-  R.sortWith([R.ascend(R.prop('fi'))]),
-  R.groupBy(R.prop('producer'))
-)
+const extractDataByProducer = producer => {
+  return R.pipe(
+    R.filter(dataset => dataset.org_fin === producer),
+    R.map(dataset => ({
+      fi: dataset.name_fin,
+      en: dataset.name_eng
+    })),
+    R.uniq,
+    R.sortWith([R.ascend(R.prop('fi'))])
+  )
+}
+
+export function fetchDatasets() {
+  return dispatch => {
+    return axios
+      .get(API_URL + PATH_DATASETS)
+      .then(response => {
+        dispatch(datasets.actions.setDatasets(response.data))
+      })
+      .catch(error => {
+        throw error
+      })
+  }
+}
+
+const datasets = createSlice({
+  name: 'datasets',
+  initialState,
+  reducers: {
+    setDatasets,
+    setSelectedProducer,
+    setSelectedData
+  }
+})
 
 export default datasets
