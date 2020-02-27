@@ -8,12 +8,11 @@ const datasets = createSlice({
   name: 'datasets',
   initialState: {
     producers: [],
-    datasets: {}
+    selectedProducer: ''
   },
   reducers: {
     set: (state, action) => {
       state.producers = extractProducers(action.payload)
-      state.datasets = extractDatasets(action.payload)
     },
     setProducer: (state, action) => {
       state.selectedProducer = action.payload

@@ -40,6 +40,9 @@
     "lint-staged": "^10.0.7",
     "prettier": "^1.19.1"
   },
+  "optionalDependencies": {
+    "fsevents": "^2.1.2"
+  },
   "husky": {
     "hooks": {
       "pre-commit": "lint-staged"
