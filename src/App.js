@@ -3,6 +3,7 @@ import { Provider } from 'react-redux'
 
 import Header from './components/Header'
 import DatasetForm from './components/DatasetForm'
+import MapContainer from './components/MapContainer'
 import store from './store'
 import { fetchDatasets } from './store/modules/datasets'
 
@@ -16,6 +17,7 @@ export default function App() {
       <div className="App">
         <Header />
         <DatasetForm />
+        <MapContainer />
       </div>
     </Provider>
   )
