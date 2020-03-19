@@ -7,7 +7,6 @@
 
 # testing
 /coverage
-public/datasets_lr.json
 
 # production
 /build
