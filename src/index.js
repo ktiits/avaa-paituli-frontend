@@ -1,16 +1,40 @@
-METADATA_API = "datasets_lr.json";
+import alasql from 'alasql';
+import $ from 'jquery';
+import 'jquery-ui-bundle/jquery-ui';
+import { Collection, Map, View } from 'ol';
+import * as control from 'ol/control';
+import * as condition from 'ol/events/condition';
+import * as format from 'ol/format';
+import * as interaction from 'ol/interaction';
+import * as layer from 'ol/layer';
+import { unByKey } from 'ol/Observable';
+import * as proj from 'ol/proj';
+import { register } from 'ol/proj/proj4';
+import * as source from 'ol/source';
+import * as style from 'ol/style';
+import LayerSwitcher from 'ol-layerswitcher';
+import proj4 from 'proj4';
 
-hakaUser = false;
-geoserver_username = '';
-geoserver_password = '';
-currentIndexMapLayer = null;
+import './index.css';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import 'jquery-ui-bundle/jquery-ui.css';
+import 'ol/ol.css';
+import 'ol-layerswitcher/src/ol-layerswitcher.css';
 
-FINNISH_LANGUAGE = "fi_FI";
-ENGLISH_LANGUAGE = "en_US";
-// USED_LANGUAGE = Liferay.ThemeDisplay.getLanguageId();
-USED_LANGUAGE = "fi_FI"
+const METADATA_API = "/api/datasets";
+const GENERATE_PACKAGE_API_URL = "/download";
+const FINNISH_LANGUAGE = 'fi_FI';
+const ENGLISH_LANGUAGE = 'en_US';
 
-metadata = null;
+const geoserver_username = '';
+const geoserver_password = '';
+
+var hakaUser = false;
+var USED_LANGUAGE = "fi_FI"
+var currentIndexMapLayer = null;
+var metadata = null;
+
+var selectedTool = "";
 
 proj4.defs([
     [
@@ -19,9 +43,7 @@ proj4.defs([
         "EPSG:3857","+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext  +no_defs"
     ]
   ]);
-
-ol.proj.proj4.register(proj4);
-
+register(proj4);
 
 function getUrlParameter(param) {
     var pageURL = window.location.search.substring(1);
@@ -35,7 +57,7 @@ function getUrlParameter(param) {
     return null;
 }
 
-pageDataIdParam = getUrlParameter("data_id");
+var pageDataIdParam = getUrlParameter("data_id");
 // If the user is logged in with HAKA, let's set ready GeoServer's username and
 // password for paituli_protected datasets
 function checkAccessRights(){
@@ -70,8 +92,6 @@ function checkAccessRights(){
 function checkParameterDatasetAccess() {
 
     loadMetadata(function() {
-
-        console.log(pageDataIdParam)
         if (pageDataIdParam === null || pageDataIdParam.length == 0) {
             main();
         } else {
@@ -95,7 +115,6 @@ function checkParameterDatasetAccess() {
 function loadMetadata(afterMetadataLoadCallback) {
     $.getJSON(METADATA_API , function(data) {
         metadata = data;
-        console.log(metadata)
         afterMetadataLoadCallback();
     });
 }
@@ -405,28 +424,28 @@ function main() {
         }
     }
 
-    var selected_style = new ol.style.Style({
-        stroke: new ol.style.Stroke({
+    var selected_style = new style.Style({
+        stroke: new style.Stroke({
             color: 'rgba(102, 178, 255, 1.0)',
             width: 3
         }),
-        fill: new ol.style.Fill({
+        fill: new style.Fill({
             color: [255, 255, 255, 0.4]
         }),
-        image: new ol.style.Circle({
+        image: new style.Circle({
             radius: 4,
-            fill: new ol.style.Fill({
+            fill: new style.Fill({
                 color: 'rgba(102, 178, 255, 1.0)'
             })
         })
     });
 
-    var highlighted_style = new ol.style.Style({
-        stroke: new ol.style.Stroke({
+    var highlighted_style = new style.Style({
+        stroke: new style.Stroke({
             color: 'rgba(255, 51, 204,1)',
             width: 8
         }),
-        fill: new ol.style.Fill({
+        fill: new style.Fill({
             color: [255, 255, 255, 0.8]
         })
 
@@ -465,7 +484,6 @@ function main() {
     // Etsin
     var ETSIN_BASE = "//metax.fairdata.fi" // "//metax-test.csc.fi" "//etsin.avointiede.fi" "//etsin-demo.avointiede.fi"
     var ETSIN_BASE_URN = "http://urn.fi/" //
-    // ETSIN_METADATA_JSON_BASE_URL =  ETSIN_BASE +"/api/3/action/package_show?id=";
 	var ETSIN_METADATA_JSON_BASE_URL =  ETSIN_BASE +"/rest/datasets?format=json&preferred_identifier=";
 
     // GeoServer
@@ -474,15 +492,11 @@ function main() {
     var LAYER_NAME_MUNICIPALITIES = "paituli:mml_hallinto_2014_100k";
     var LAYER_NAME_CATCHMENT_AREAS = "paituli:syke_valuma_maa";
 
-    // var WFS_INDEX_MAP_LAYER_URL = BASE_URL + "wfs?service=WFS&version=2.0.0&request=GetFeature&srsname=epsg:3857&typeNames=" + INDEX_LAYER + "&cql_filter=BBOX(geom,!extent!,'EPSG:4326') AND !key! = '!value!'";
     var WFS_INDEX_MAP_LAYER_URL = BASE_URL + "wfs?service=WFS&version=2.0.0&request=GetFeature&srsname=epsg:3857&typeNames=" + INDEX_LAYER + "&cql_filter= !key! = '!value!'";
     var WMS_INDEX_MAP_LABEL_LAYER_URL = BASE_URL + "wms?service=WMS&LAYERS= " + INDEX_LAYER + "&CQL_FILTER=data_id = '!value!'";
     var WMS_PAITULI_BASE_URL = BASE_URL + "wms?";
     var WMS_PAITULI_BASE_URL_GWC = BASE_URL + "gwc/service/wms?";
     var WFS_INDEX_MAP_DOWNLOAD_SHAPE = BASE_URL + "wfs?service=WFS&version=2.0.0&request=GetFeature&srsname=epsg:4326&typeNames=" + INDEX_LAYER + "&outputFormat=shape-zip&propertyname=label,path,geom&cql_filter= !key! = '!value!'";
-
-    // Paituli APIs
-    var GENERATE_PACKAGE_API_URL = "/paituli-portlet/generatePackageAPI.jsp";
 
     // Location search
     var NOMINATIM_API_URL = "//nominatim.openstreetmap.org/search?format=json&q=!query!&addressdetails=0&limit=1";
@@ -543,47 +557,22 @@ function main() {
     }
 
     function emailDataOrList(input, dlType,licence, modal, tipsOutput){
-        var filesToPackagePaths = getSemicolonStrFromStrArray(fileList);
-        var filesToPackageNames = getSemicolonStrFromStrArray(fileLabelList);
-        var emailVal = input.val();
-        var url = GENERATE_PACKAGE_API_URL;
-
-        if(filesToPackagePaths && emailVal) {
-            var postParams = "";
-            postParams = postParams.concat("filepaths=" + filesToPackagePaths + "&email=" + emailVal);
-            if(filesToPackageNames) {
-                postParams = postParams.concat("&filenames=" + filesToPackageNames);
-            }
-            var org = getCurrentLayerData('org');
-            if(org) {
-                postParams = postParams.concat("&org=" + org);
-            }
-            var name = getCurrentLayerData('name');
-            if(name) {
-                postParams = postParams.concat("&data=" + name);
-            }
-            var scale = getCurrentLayerData('scale');
-            if(scale) {
-                postParams = postParams.concat("&scale=" + scale);
-            }
-            var year = getCurrentLayerData('year');
-            if(year) {
-                postParams = postParams.concat("&year=" + year);
-            }
-            var coordsys = getCurrentLayerData('coord_sys');
-            if(coordsys) {
-                postParams = postParams.concat("&coordsys=" + coordsys);
-            }
-            var format = getCurrentLayerData('format');
-            if(format) {
-                postParams = postParams.concat("&format=" + format);
-            }
-            if(currentDataId) {
-                postParams = postParams.concat("&data_id=" + currentDataId);
-            }
-            postParams = postParams.concat("&dl_type="+dlType);
-            postParams = postParams.concat("&language="+USED_LANGUAGE);
-
+        const emailVal = input.val();
+        if (fileList && fileList.length > 0 && emailVal) {
+            const downloadRequest = {
+                data_id: currentDataId,
+                downloadType: dlType.toUpperCase(),
+                email: emailVal,
+                language: USED_LANGUAGE,
+                filePaths: fileList,
+                filenames: fileLabelList,
+                org: getCurrentLayerData('org'),
+                data: getCurrentLayerData('name'),
+                scale: getCurrentLayerData('scale'),
+                year: getCurrentLayerData('year'),
+                coord_sys: getCurrentLayerData('coord_sys'),
+                format: getCurrentLayerData('format')
+            };
 
             // Validate input fields
             var valid = true;
@@ -595,8 +584,15 @@ function main() {
 
             if (valid) {
                 modal.data('email', input.val());
-                $.post(url, postParams, function(data, status) {
-                    modal.dialog("close");
+                $.ajax({
+                    type: 'POST',
+                    GENERATE_PACKAGE_API_URL,
+                    data: JSON.stringify(downloadRequest),
+                    contentType: 'application/json; charset=utf-8',
+                    dataType: 'json',
+                    success: function(data) {
+                        modal.dialog.close();
+                    }
                 });
             }
             return valid;
@@ -813,7 +809,6 @@ function main() {
 
     function createFeatureInfoContent(rootElem, event) {
         var viewResolution = view.getResolution();
-        // var wmsSource = getFeatureInfoWmsSrc(currentDataUrl);
         var url = currentDataLayerSrc.getGetFeatureInfoUrl(
             event.coordinate, viewResolution, 'EPSG:3857',
             {	'INFO_FORMAT': 'text/plain',
@@ -1384,7 +1379,6 @@ function main() {
             var dataIdResult = alasql("SELECT data_id FROM ? WHERE org='" + selectedProducer + "' AND name='" + selectedData + "' AND scale='" + selectedScale + "' AND year='" + selectedYear + "' AND format='" + selectedFormat + "' AND coord_sys='" + selectedCoordsys + "'", [metadata]).map(function(item) {
                 return item.data_id;
             });
-            console.log(dataIdResult)
             if(typeof dataIdResult[0] !== 'undefined') {
                 currentDataId = dataIdResult[0];
                 var dataUrl = getCurrentLayerData('data_url');
@@ -1619,18 +1613,18 @@ function main() {
     }
 
     function fixDropDownItemForOrdering(label){
-        var parts;
+        let d;
         // Split is for cases like: 1:10 000, 25mx25m, "1:20 000, 1:50 000",
         // 2015-2017.
         // Count only with the last number.
-        if(label.search(/[?,:\.xX-]+/) != -1) {
-            parts = label.split(/[?,:\.xX-]+/g);
+        if (label.search(/[?,:\.xX-]+/) != -1) {
+            let parts = label.split(/[?,:\.xX-]+/g);
             d = parts[parts.length - 1];
         } else {
             d = label;
         }
         // Remove anything non-numeric
-        d= d.replace(/\D/g,'');
+        d = d.replace(/\D/g,'');
         return d;
     }
 
@@ -1676,11 +1670,8 @@ function main() {
         if(rawEtsinMetadata != null) {
             var etsinLinks = '<br>' + translator.getVal('info.metadatalinksheader') + "<ul>";
             $.each(rawEtsinMetadata.research_dataset.remote_resources, function (key, data) {
-			//.each(rawEtsinMetadata.result.resources, function (key, data) {
-                //if(data.name != null){
 				if(data.title != null){	 
 					if(data.download_url.identifier.toLowerCase().indexOf("latauspalvelu") === -1){
-						//etsinLinks = etsinLinks  + '<li><a href="' + data.url + '" target="_blank">' + data.name + '</a></li>';
 						etsinLinks = etsinLinks  + '<li><a href="' + data.download_url.identifier + '" target="_blank">' + data.title + '</a></li>';
 					}
                 }
@@ -1697,36 +1688,22 @@ function main() {
 	// Get dataset's metadata description from Metax
     function getNotesAsHtmlFromEtsinMetadata(rawEtsinMetadata) {
         if(rawEtsinMetadata != null) {
-			//console.log(rawEtsinMetadata); 
-			notes = rawEtsinMetadata.research_dataset.description
+			let notes = rawEtsinMetadata.research_dataset.description
 			if(USED_LANGUAGE == FINNISH_LANGUAGE) {
                 notes = notes.fi;
             } else if(USED_LANGUAGE == ENGLISH_LANGUAGE) {
                 notes = notes.en;
             }
 			 
-			console.log(notes); 
 			if(notes == null) {
                 return null;
             }
-            /*
-			if(USED_LANGUAGE == FINNISH_LANGUAGE) {
-                notes = notes.fin;
-            } else if(USED_LANGUAGE == ENGLISH_LANGUAGE) {
-                notes = notes.eng;
-            }
-            if(notes == null) {
-                return null;
-            }
-			*/
 			// Fix links from MarkDown to HTML
             var regexp = /\[.*?\]\(http.*?\)/g;
             var match, matches = [];
 
             while ((match = regexp.exec(notes)) != null) {
                 matches.push(match.index);
-				console.log(match.index)
-				console.log(match)
             }
 
             matches.reverse();
@@ -1744,27 +1721,20 @@ function main() {
     }
 
     function cutLicenseURL(urn) {
-
         if (urn != null) {
-
             var arr = urn.split("geodata/");
             urn = arr[1];
-
         }
-
         return urn;
     }
 
     function flipURN(urn) {
-
         var colon = ":";
         var dash = "-";
-
         if (urn.indexOf(colon) == -1) {
             var arr = urn.split(dash);
             urn = arr[0] + colon + arr[1] + colon + arr[2] + colon + arr[3] + dash + arr[4];
         }
-
         return urn;
     }
 
@@ -1798,7 +1768,6 @@ function main() {
         locationSearchInput.val('');
         clearMapFeatureSelection();
         clearInfoBoxTabs();
-        // clearSearchField();
         clearSearchResults();
         $('#feature-search-field').value='';
         if(currentDataId != null) {
@@ -1811,10 +1780,9 @@ function main() {
                 currentIndexMapLayer.getSource().on('change', function(e) {
                     if (this.getState() == 'ready' && isFirstTimeLoaded) {
                         var hasInfoTab = layerHasFeatureInfo();
-                        // mapsheets = getCurrentLayerData("map_sheets")
-                        if(mapsheets > 1) {
+                        mapsheets = getCurrentLayerData("map_sheets");
+                        if (mapsheets > 1) {
                             featureSearchContainer.css("visibility","visible");
-                            //} else if(getTotalAmountOfLayerFeatures() == 1) {
                             // Show all files for dataset, if in PostGIS DB mapsheeets is set to 1. Sometimes
                             // there might be more than one file, although only 1 mapsheet (for example FMI scenarios).
                         } else if(mapsheets == 1) {
@@ -1849,9 +1817,8 @@ function main() {
                 loadDataLayer();
                 if(currentDataLayer !== null) {
                     map.getLayers().insertAt(1, currentDataLayer);
-                    clearMapWarning()
-                }
-                else{
+                    clearMapWarning();
+                } else {
                     setDataAvailabiltyWarning();
                 }
                 map.addLayer(currentIndexMapLayer);
@@ -1872,7 +1839,7 @@ function main() {
     }
 
     function layerHasFeatureInfo() {
-        return getCurrentLayerData('data_url') !== null;
+        return getCurrentLayerData("data_url") !== null;
     }
 
     //Show map related tools
@@ -1882,7 +1849,6 @@ function main() {
             selectSelectContainer.show();
             clearSelectContainer.show();
             drawSelectContainer.show();
-
         } else {
             selectSelectContainer.hide();
             clearSelectContainer.hide();
@@ -1902,16 +1868,10 @@ function main() {
     }
 
     function getCurrentLayerData(field) {
-        
         var value = alasql("SELECT " + field + " FROM ? WHERE data_id='" + currentDataId + "'", [metadata]).map(function(item) {
             return item[field];
         });
-        console.log(value)
-        if (value[0]=="paituli:mml_hallinto_2020_10k"){
-            
-
-        }
-        if(typeof value !== 'undefined' && value !== null && typeof value[0] !== 'undefined' && value[0] !== null) {
+        if (typeof value !== 'undefined' && value !== null && typeof value[0] !== 'undefined' && value[0] !== null) {
             return value[0];
         } else {
             return null;
@@ -1921,13 +1881,13 @@ function main() {
     function loadIndexMapLabelLayer() {
         if(currentDataId !== null) {
             var url = WMS_INDEX_MAP_LABEL_LAYER_URL.replace('!value!', currentDataId);
-            var src = new ol.source.ImageWMS({
+            var src = new source.ImageWMS({
                 url: url,
                 params: {'VERSION': '1.1.1'},
                 serverType: 'geoserver'
             });
 
-            currentIndexMapLabelLayer = new ol.layer.Image({
+            currentIndexMapLabelLayer = new layer.Image({
                 source: src,
                 visible: true
             });
@@ -1940,16 +1900,13 @@ function main() {
     function loadIndexLayer() {
         if(currentDataId !== null) {
             var url = WFS_INDEX_MAP_LAYER_URL.replace('!key!', 'data_id').replace('!value!', currentDataId);
-
-            var indexSource = new ol.source.Vector({
-                format: new ol.format.GeoJSON(),
-                //projection: 'EPSG:3857',
+            var indexSource = new source.Vector({
+                format: new format.GeoJSON(),
                 loader: function(extent, resolution, projection) {
                     var proj = projection.getCode();
                     $.ajax({
                         jsonpCallback: 'loadIndexMapFeatures',
                         dataType: 'jsonp',
-                        // url: url.replace("!extent!", extent.join(',')) + '&outputFormat=text/javascript&format_options=callback:loadIndexMapFeatures',
                         url: url + '&outputFormat=text/javascript&format_options=callback:loadIndexMapFeatures',
                         success: function(response) {
                             var features = indexSource.getFormat().readFeatures(response);
@@ -1957,20 +1914,14 @@ function main() {
                         }
                     })
                 },
-                // strategy: ol.loadingstrategy.bbox // This does not seem to work anyway, so commented out.
             });
 
-            currentIndexMapLayer = new ol.layer.Vector({
-                /*renderOrder: function(f1, f2){
-                    if(f1.getStyle()!=null){
-                        return 1;
-                    }return -1;
-                },*/
+            currentIndexMapLayer = new layer.Vector({
                 title: translator.getVal("map.indexmap"),
                 source: indexSource,
                 visible: true,
-                style: new ol.style.Style({
-                    stroke: new ol.style.Stroke({
+                style: new style.Style({
+                    stroke: new style.Stroke({
                         color: 'rgba(0, 0, 255, 1.0)',
                         width: 2
                     })
@@ -1990,42 +1941,31 @@ function main() {
             if(currentDataUrl.indexOf("protected") > -1){
                 url = WMS_PAITULI_BASE_URL;
 
-                currentDataLayerSrc = new ol.source.ImageWMS({
+                currentDataLayerSrc = new source.ImageWMS({
                     url: url,
                     params: {'LAYERS': currentDataUrl,'VERSION': '1.1.1'},
                     serverType: 'geoserver'
                 });
 
-                currentDataLayer = new ol.layer.Image({
+                currentDataLayer = new layer.Image({
                     title: translator.getVal("map.datamap"),
                     source: currentDataLayerSrc,
                     visible: true
                 });
             }
             else{
-                currentDataLayerSrc = new ol.source.TileWMS({
+                currentDataLayerSrc = new source.TileWMS({
                     url: url,
                     params: {'LAYERS': currentDataUrl,'VERSION': '1.1.1'},
                     serverType: 'geoserver'
                 });
 
-                currentDataLayer = new ol.layer.Tile({
+                currentDataLayer = new layer.Tile({
                     title: translator.getVal("map.datamap"),
                     source: currentDataLayerSrc,
                     visible: true
                 });
             }
-
-            /*
-             * //Set baseurl correctly for password protected datasets. var url =
-             * WMS_PAITULI_BASE_URL_GWC; if(currentDataUrl.indexOf("protected") >
-             * -1){ url = WMS_PAITULI_BASE_URL; } currentDataLayerSrc = new
-             * ol.source.TileWMS({ url: url, params: {'LAYERS':
-             * currentDataUrl,'VERSION': '1.1.1'}, serverType: 'geoserver' });
-             * currentDataLayer = new ol.layer.Tile({ title:
-             * translator.getVal("map.datamap"), source: currentDataLayerSrc,
-             * visible: true });
-             */
 
             if(currentMaxResolution !== null) {
                 currentDataLayer.setMaxResolution(currentMaxResolution);
@@ -2039,12 +1979,6 @@ function main() {
         return scale / 2835;
     }
 
-    // KYlli, not needed?
-    /*
-     * var loadIndexMapLabelFeatures = function(response) {
-     * currentIndexMapLabelLayer.getSource().addFeatures(currentIndexMapLabelLayer.getSource().readFeatures(response)); };
-     */
-
     function getSearchResultFeatures(searchStr) {
         var hits = [];
         currentIndexMapLayer.getSource().forEachFeature(function(feature) {
@@ -2054,14 +1988,10 @@ function main() {
         });
         return hits;
     }
-// Kylli, not needed
-    /* 	function getTotalAmountOfLayerFeatures() {
-            return currentIndexMapLayer.getSource().getFeatures().length;
-        } */
 
-    var osmLayer = new ol.layer.Tile({
+    var osmLayer = new layer.Tile({
         title: translator.getVal("map.basemap"),
-        source : new ol.source.TileWMS({
+        source : new source.TileWMS({
             url: "http://ows.terrestris.de/osm/service?",
             attributions: 'Background map: © <a target="_blank" href="http://ows.terrestris.de/dienste.html">terrestris</a>. Data: © <a target="_blank" href="http://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
             params: {
@@ -2073,9 +2003,9 @@ function main() {
         visible: true
     });
 
-    var municipalitiesLayer = new ol.layer.Tile({
+    var municipalitiesLayer = new layer.Tile({
         title: translator.getVal("map.municipalitiesmap"),
-        source : new ol.source.TileWMS({
+        source : new source.TileWMS({
             url : WMS_PAITULI_BASE_URL,
             params : {
                 'LAYERS' : LAYER_NAME_MUNICIPALITIES,
@@ -2087,9 +2017,9 @@ function main() {
         visible : false
     });
 
-    var catchmentLayer = new ol.layer.Tile({
+    var catchmentLayer = new layer.Tile({
         title: translator.getVal("map.catchment"),
-        source : new ol.source.TileWMS({
+        source : new source.TileWMS({
             url : WMS_PAITULI_BASE_URL,
             params : {
                 'LAYERS' : LAYER_NAME_CATCHMENT_AREAS,
@@ -2108,19 +2038,18 @@ function main() {
         }
     }
 
-    var overviewMap = new ol.control.OverviewMap({
+    var overviewMap = new control.OverviewMap({
         collapsed: false,
         layers: [osmLayer]
     });
 
-
-    var map = new ol.Map({
+    var map = new Map({
         layers: [osmLayer, catchmentLayer, municipalitiesLayer],
         // controls: [overviewMap],
         target: mapContainerId,
         // pixelRatio: 1,
-        view: new ol.View({
-            center: ol.proj.transform([500000, 7200000], 'EPSG:3067', 'EPSG:3857'),
+        view: new View({
+            center: proj.transform([500000, 7200000], 'EPSG:3067', 'EPSG:3857'),
             zoom: 5
         })
     });
@@ -2159,83 +2088,33 @@ function main() {
 
     function resetMapView() {
         view.setZoom(5);
-        view.setCenter(ol.proj.transform([500000, 7200000], 'EPSG:3067', 'EPSG:3857'));
+        view.setCenter(proj.transform([500000, 7200000], 'EPSG:3067', 'EPSG:3857'));
         return false;
     }
 
     // a normal select interaction to handle click
-    var featureSelectInteraction = new ol.interaction.Select({
-        toggleCondition: ol.events.condition.always,
+    var featureSelectInteraction = new interaction.Select({
+        toggleCondition: condition.always,
         style: selected_style,
         multi: true //Select several, if overlapping
     });
+
     featureSelectInteraction.on('select', function(e) {
         setInfoContent('download');
     });
 
     var selectedFeatures = featureSelectInteraction.getFeatures();
 
-    /*
-     * selectedFeatures.on('add', function(e) { var maxFeatures =
-     * getMaxDownloadableFeatureAmount(); if(selectedFeatures.getLength() >
-     * maxFeatures) { selectedFeatures.remove(e.element);
-     * alert(translator.getVal("info.maxfeaturewarning").replace('!maxFeatures!',
-     * maxFeatures)); } else { fileLabelList.push(e.element.get('label')); } });
-     */
     selectedFeatures.on('add', function(e) {
         fileLabelList.push(e.element.get('label'));
     });
+
     selectedFeatures.on('remove', function(e) {
         var deleteIdx = fileLabelList.indexOf(e.element.get('label'));
         if(deleteIdx > -1) {
             fileLabelList.splice(deleteIdx, 1);
         }
     });
-
-
-    /*
-     * Highlight features on map and dl list when mouse over them. Don't simply clear and add all hovered features each time because that causes rendering
-     * order to be undefined -> flickering when moving mouse over selected features. Instead check if feature was already highlighted and highlight only if not.
-     * OL4 changes: forEachFeatureAtPixel, highlightOverlay
-     * /
-    /*
-    
-    map.on('pointermove', function(evt) {
-        if (evt.dragging) return;
-        var features = new Set();
-        map.forEachFeatureAtPixel(
-            evt.pixel,
-            function(ft, l){
-                    if(l){
-                        return;
-                    }
-                    if(ft.getId()){
-                        features.add(ft)
-                    };
-            }
-        );
-        var remove = []
-        highlightOverlay.getFeatures().forEach(function(feature, idx, array) {
-            if(features.has(feature)){
-                features.delete(feature);
-            }else{
-                remove.push(feature);
-            }
-        });
-        remove.forEach(function(ft){
-            $('#data-download-list').find('label[ol_id ="'+ft.getId()+'"]').css("font-weight","normal");	 
-            highlightOverlay.removeFeature(ft);
-        });
-        features.forEach(function(ft){
-            var elem = $('#data-download-list').find('label[ol_id ="'+ft.getId()+'"]')
-            elem.css("font-weight","Bold");	        
-            highlightOverlay.addFeature(ft);
-        });
-    });
-    
-    
-    */
-
 
     function clearMapFeatureSelection() {
         selectedFeatures.clear();
@@ -2244,27 +2123,21 @@ function main() {
         return false;
     }
 
-    function getMaxDownloadableFeatureAmount() {
-        var fileSize = getCurrentLayerData("file_size")
-        return fileSize !== null ? Math.floor(MAX_DOWNLOADABLE_SIZE / getCurrentLayerData("file_size")) : 0;
-    }
-
     function getTotalDownloadSize() {
-        var fileSize = getCurrentLayerData("file_size")
-        return fileSize !== null ? Math.ceil(getCurrentLayerData("file_size") * selectedFeatures.getLength()) : 0;
+        var fileSize = getCurrentLayerData("file_size");
+        return fileSize !== null ? Math.ceil(fileSize * selectedFeatures.getLength()) : 0;
     }
 
     map.addInteraction(featureSelectInteraction);
 
     // a DragBox interaction used to select features by drawing boxes
-    var mapDragBox = new ol.interaction.DragBox({
+    var mapDragBox = new interaction.DragBox({
     });
 
     mapDragBox.on('boxend', function(e) {
         var extent = mapDragBox.getGeometry().getExtent();
 
         // Check which mapsheets were selected before and which are new
-        // mapsheets
         var newFeatures = [];
         var oldFeaturesInSelection = [];
         var existing;
@@ -2277,18 +2150,6 @@ function main() {
                 newFeatures.push(feature);
             }
         });
-        // If any of the selected map sheets was new, select all selected
-        // mapsheets
-        // If all selected mapsheets were selected before leave them unselected
-        /*
-         * if (newFeatures.length > 0) {
-         * selectedFeatures.extend(oldFeaturesInSelection); var maxFeatureAmount =
-         * getMaxDownloadableFeatureAmount(); if(selectedFeatures.getLength() +
-         * newFeatures.length > maxFeatureAmount) {
-         * alert(translator.getVal("info.maxfeaturewarning").replace('!maxFeatures!',
-         * getMaxDownloadableFeatureAmount())); } else {
-         * selectedFeatures.extend(newFeatures); } }
-         */
         if (newFeatures.length > 0) {
             selectedFeatures.extend(oldFeaturesInSelection);
             selectedFeatures.extend(newFeatures);
@@ -2303,12 +2164,12 @@ function main() {
     var sketch;
 
     /* Add drawing vector source */
-    var drawingSource = new ol.source.Vector({
+    var drawingSource = new source.Vector({
         useSpatialIndex : false,
     });
 
     /* Add drawing layer */
-    var drawingLayer = new ol.layer.Vector({
+    var drawingLayer = new layer.Vector({
         source: drawingSource
     });
     map.addLayer(drawingLayer);
@@ -2322,7 +2183,7 @@ function main() {
     var modify;
 
     // Drawing interaction
-    draw = new ol.interaction.Draw({
+    draw = new interaction.Draw({
         source : drawingSource,
         type : 'Polygon',
         style: selected_style
@@ -2368,10 +2229,10 @@ function main() {
         updateDrawSelection(event);
     });
 
-    var highlightCollection = new ol.Collection();
-    var highlightOverlay = new ol.layer.Vector({
+    var highlightCollection = new Collection();
+    var highlightOverlay = new layer.Vector({
         map: map,
-        source: new ol.source.Vector({
+        source: new source.Vector({
             features: highlightCollection,
             useSpatialIndex: false // optional, might improve performance
         }),
@@ -2392,9 +2253,9 @@ function main() {
     // Select right tool
     // Set default
     var dragPan;
-    map.getInteractions().forEach(function(interaction) {
-        if (interaction instanceof ol.interaction.DragPan) {
-            dragPan = interaction;
+    map.getInteractions().forEach(i => {
+        if (i instanceof interaction.DragPan) {
+            dragPan = i;
         }
     }, this);
 
@@ -2411,7 +2272,7 @@ function main() {
         featureSelectInteraction.setActive(false);
         mapDragBox.setActive(false);
         draw.setActive(false);
-        ol.Observable.unByKey(getFeatureInfoToolKey);
+        unByKey(getFeatureInfoToolKey);
     }
 
     function selectSelectTool(){
@@ -2427,7 +2288,7 @@ function main() {
         featureSelectInteraction.setActive(true);
         mapDragBox.setActive(true);
         draw.setActive(false);
-        ol.Observable.unByKey(getFeatureInfoToolKey);
+        unByKey(getFeatureInfoToolKey);
     }
 
     function selectInfoTool(){
@@ -2464,17 +2325,17 @@ function main() {
         mapDragBox.setActive(false);
         mapDragBox.setActive(false);
         draw.setActive(true);
-        ol.Observable.unByKey(getFeatureInfoToolKey);
+        unByKey(getFeatureInfoToolKey);
 
     }
 
    
  
-    var layerSwitcher = new ol.control.LayerSwitcher({
+    var layerSwitcher = new LayerSwitcher({
         tipLabel: 'Toggle layers' // Optional label for button
     });
 
-    var scaleLineControl = new ol.control.ScaleLine();
+    var scaleLineControl = new control.ScaleLine();
 
     function initLocationSearch() {
         locationSearchInput.keypress(function(event) {
@@ -2485,7 +2346,7 @@ function main() {
                     var queryUrl = NOMINATIM_API_URL.replace('!query!', searchStr);
                     $.getJSON(queryUrl, function(data) { 
                         if(data.length > 0) {
-                            map.getView().setCenter(ol.proj.transform([Number(data[0].lon), Number(data[0].lat)], 'EPSG:4326', 'EPSG:3857'));
+                            map.getView().setCenter(proj.transform([Number(data[0].lon), Number(data[0].lat)], 'EPSG:4326', 'EPSG:3857'));
                             if (searchStr.indexOf(",") != -1){
                                 map.getView().setZoom(16);
                             } else {
@@ -2509,16 +2370,13 @@ function main() {
 
     selectPanTool();
 
-
-    // map.addControl(overviewMap);
-    // map.addControl(layerSwitcher);
-    // map.addControl(scaleLineControl);
+    map.addControl(overviewMap);
+    map.addControl(layerSwitcher);
+    map.addControl(scaleLineControl);
 
     initFormInputs('form-input-container');
     initLocationSearch();
     resetMapView();
-
-
 }
 
 // checkAccessRights();
