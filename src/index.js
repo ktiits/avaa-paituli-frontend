@@ -584,15 +584,12 @@ function main() {
 
             if (valid) {
                 modal.data('email', input.val());
-                $.ajax({
-                    type: 'POST',
-                    GENERATE_PACKAGE_API_URL,
+                $.post({
+                    url: GENERATE_PACKAGE_API_URL,
                     data: JSON.stringify(downloadRequest),
                     contentType: 'application/json; charset=utf-8',
                     dataType: 'json',
-                    success: function(data) {
-                        modal.dialog.close();
-                    }
+                    success: (data) => modal.dialog("close")
                 });
             }
             return valid;
@@ -633,7 +630,7 @@ function main() {
                 icons: {
                     primary: "ui-icon-close"
                 },
-                click: function() {$(this).dialog("close");}
+                click: () => $(this).dialog("close")
             }
         ],
         close: function() {
@@ -1575,7 +1572,7 @@ function main() {
             inputElem.append(optionElem);
         });
 
-        if(inputElem.find('option').size() <= 1) {
+        if(inputElem.find('option').length <= 1) {
             inputElem.prop('disabled', true);
         }
 
@@ -1776,19 +1773,16 @@ function main() {
             loadIndexLayer();
             loadIndexMapLabelLayer();
 
-            if(currentIndexMapLayer !== null) {
-                currentIndexMapLayer.getSource().on('change', function(e) {
+            if (currentIndexMapLayer !== null) {
+                currentIndexMapLayer.getSource().once('change', function(e) {
                     if (this.getState() == 'ready' && isFirstTimeLoaded) {
                         var hasInfoTab = layerHasFeatureInfo();
                         mapsheets = getCurrentLayerData("map_sheets");
                         if (mapsheets > 1) {
                             featureSearchContainer.css("visibility","visible");
-                            // Show all files for dataset, if in PostGIS DB mapsheeets is set to 1. Sometimes
-                            // there might be more than one file, although only 1 mapsheet (for example FMI scenarios).
-                        } else if(mapsheets == 1) {
-                            for (var i = 0; i < currentIndexMapLayer.getSource().getFeatures().length; i++){
-                                selectedFeatures.push(currentIndexMapLayer.getSource().getFeatures()[i]);
-                            }
+                        } else if (mapsheets === 1) {
+                            // if there is only one mapsheet, select all files
+                            selectedFeatures.extend(currentIndexMapLayer.getSource().getFeatures());
                             featureSearchContainer.css("visibility","hidden");
                         }
                         setInfoContent('download');
@@ -1797,7 +1791,8 @@ function main() {
                     }
                     selectTabAfterDatasetChange(hasInfoTab);
                 });
-                if(currentIndexMapLabelLayer !== null) {
+
+                if (currentIndexMapLabelLayer !== null) {
                     currentIndexMapLayer.on('change:visible', function(e) {
                         if(currentIndexMapLayer.getVisible()) {
                             currentIndexMapLabelLayer.setVisible(true);
@@ -1989,7 +1984,7 @@ function main() {
         return hits;
     }
 
-    var osmLayer = new layer.Tile({
+    const osmLayerOptions = {
         title: translator.getVal("map.basemap"),
         source : new source.TileWMS({
             url: "http://ows.terrestris.de/osm/service?",
@@ -2001,7 +1996,7 @@ function main() {
         }),
         opacity : 1.0,
         visible: true
-    });
+    };
 
     var municipalitiesLayer = new layer.Tile({
         title: translator.getVal("map.municipalitiesmap"),
@@ -2040,14 +2035,18 @@ function main() {
 
     var overviewMap = new control.OverviewMap({
         collapsed: false,
-        layers: [osmLayer]
+        layers: [ 
+            new layer.Tile(osmLayerOptions)
+        ]
     });
 
     var map = new Map({
-        layers: [osmLayer, catchmentLayer, municipalitiesLayer],
-        // controls: [overviewMap],
+        layers: [
+            new layer.Tile(osmLayerOptions), 
+            catchmentLayer,
+            municipalitiesLayer
+        ],
         target: mapContainerId,
-        // pixelRatio: 1,
         view: new View({
             center: proj.transform([500000, 7200000], 'EPSG:3067', 'EPSG:3857'),
             zoom: 5
