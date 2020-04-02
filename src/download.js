@@ -4,7 +4,7 @@ import 'jquery-ui-bundle/jquery-ui'
 import { Collection, Map, View } from 'ol'
 import * as control from 'ol/control'
 import * as condition from 'ol/events/condition'
-import * as format from 'ol/format'
+import * as ol_format from 'ol/format'
 import * as interaction from 'ol/interaction'
 import * as layer from 'ol/layer'
 import { unByKey } from 'ol/Observable'
@@ -21,10 +21,10 @@ import 'bootstrap/dist/css/bootstrap.min.css'
 import 'jquery-ui-bundle/jquery-ui.css'
 import 'ol/ol.css'
 import 'ol-layerswitcher/src/ol-layerswitcher.css'
-import './index.css'
+import './download.css'
 
 const METADATA_API = '/api/datasets'
-const GENERATE_PACKAGE_API_URL = '/download'
+const DOWNLOAD_API_URL = '/api/download'
 
 const FINNISH_LANGUAGE = 'fi_FI'
 // const ENGLISH_LANGUAGE = 'en_US'
@@ -103,23 +103,16 @@ function checkParameterDatasetAccess() {
     if (pageDataIdParam === null || pageDataIdParam.length == 0) {
       main()
     } else {
-      /*
-      TODO Haka
-
       const dataIdRow = alasql(
         "SELECT * FROM ? WHERE data_id='" + pageDataIdParam + "'",
         [metadata]
       )
-      if (typeof dataIdRow[0] !== 'undefined') {
-           if (dataIdRow[0].access == 2 && !hakaUser) {
-               window.location.replace('https://' + window.location.host + '/c/portal/login?p_l_id= ' + Liferay.ThemeDisplay.getPlid());
-           } else {
-               main();
-           }
+      if (dataIdRow[0] != null && dataIdRow[0].access == 2 && !hakaUser) {
+        // TODO: redirect user to login page
+        window.location.replace('/')
       } else {
-           main();
+        main()
       }
-      */
     }
   })
 }
@@ -132,14 +125,6 @@ function loadMetadata(afterMetadataLoadCallback) {
 }
 
 function main() {
-  String.prototype.insert = function (index, string) {
-    if (index > 0)
-      return (
-        this.substring(0, index) + string + this.substring(index, this.length)
-      )
-    else return string + this
-  }
-
   $(document).tooltip({ track: true })
 
   const selected_style = new style.Style({
@@ -199,25 +184,25 @@ function main() {
     ETSIN_BASE + '/rest/datasets?format=json&preferred_identifier='
 
   // GeoServer
-  const BASE_URL = '//avaa.tdata.fi/geoserver/' // "//avoin-test.csc.fi/geoserver/";
+  const GEOSERVER_BASE_URL = '//avaa.tdata.fi/geoserver/' // "//avoin-test.csc.fi/geoserver/";
   const INDEX_LAYER = 'paituli:index'
   const LAYER_NAME_MUNICIPALITIES = 'paituli:mml_hallinto_2014_100k'
   const LAYER_NAME_CATCHMENT_AREAS = 'paituli:syke_valuma_maa'
 
   const WFS_INDEX_MAP_LAYER_URL =
-    BASE_URL +
+    GEOSERVER_BASE_URL +
     'wfs?service=WFS&version=2.0.0&request=GetFeature&srsname=epsg:3857&typeNames=' +
     INDEX_LAYER +
     "&cql_filter= !key! = '!value!'"
   const WMS_INDEX_MAP_LABEL_LAYER_URL =
-    BASE_URL +
+    GEOSERVER_BASE_URL +
     'wms?service=WMS&LAYERS= ' +
     INDEX_LAYER +
     "&CQL_FILTER=data_id = '!value!'"
-  const WMS_PAITULI_BASE_URL = BASE_URL + 'wms?'
-  const WMS_PAITULI_BASE_URL_GWC = BASE_URL + 'gwc/service/wms?'
+  const WMS_PAITULI_BASE_URL = GEOSERVER_BASE_URL + 'wms?'
+  const WMS_PAITULI_BASE_URL_GWC = GEOSERVER_BASE_URL + 'gwc/service/wms?'
   const WFS_INDEX_MAP_DOWNLOAD_SHAPE =
-    BASE_URL +
+    GEOSERVER_BASE_URL +
     'wfs?service=WFS&version=2.0.0&request=GetFeature&srsname=epsg:4326&typeNames=' +
     INDEX_LAYER +
     "&outputFormat=shape-zip&propertyname=label,path,geom&cql_filter= !key! = '!value!'"
@@ -330,7 +315,7 @@ function main() {
       if (valid) {
         modal.data('email', input.val())
         $.post({
-          url: GENERATE_PACKAGE_API_URL,
+          url: DOWNLOAD_API_URL,
           data: JSON.stringify(downloadRequest),
           contentType: 'application/json; charset=utf-8',
           dataType: 'json',
@@ -810,17 +795,17 @@ function main() {
         dlLabel.hover(
           (event) => {
             highlightOverlay.getSource().clear()
-            const feature = currentIndexMapLayer
+            const olId = currentIndexMapLayer
               .getSource()
               .getFeatureById($(event.target).attr('ol_id'))
-            highlightOverlay.getSource().addFeature(feature)
+            highlightOverlay.getSource().addFeature(olId)
             dlLabel.css('font-weight', 'Bold')
           },
           (event) => {
-            const feature = currentIndexMapLayer
+            const olId = currentIndexMapLayer
               .getSource()
               .getFeatureById($(event.target).attr('ol_id'))
-            highlightOverlay.getSource().removeFeature(feature)
+            highlightOverlay.getSource().removeFeature(olId)
             dlLabel.css('font-weight', 'normal')
           }
         )
@@ -1534,10 +1519,6 @@ function main() {
       metadataTabContentRoot.append(metadataInfoLabel)
     }
 
-    const metadataNotes = $('<div>', {
-      id: 'metadata-notes',
-    })
-
     const errorFunction = (metadataNotes) => {
       metadataNotes.html(translator.getVal('info.nometadataavailable'))
       metadataTabContentRoot.append(metadataNotes)
@@ -1561,6 +1542,10 @@ function main() {
       metadataTabContentRoot.append(metadataNotes)
     }
 
+    const metadataNotes = $('<div>', {
+      id: 'metadata-notes',
+    })
+
     fetchMetadataDescription(
       metadataURN,
       metadataNotes,
@@ -1572,34 +1557,31 @@ function main() {
   // Get dataset's metadata file links from Metax
   function getLinksAsHtmlFromEtsinMetadata(rawEtsinMetadata) {
     if (rawEtsinMetadata != null) {
-      let etsinLinks =
-        '<br>' + translator.getVal('info.metadatalinksheader') + '<ul>'
-      $.each(
-        rawEtsinMetadata.research_dataset.remote_resources,
-        (key, data) => {
-          if (data.title != null) {
-            if (
-              data.download_url.identifier
-                .toLowerCase()
-                .indexOf('latauspalvelu') === -1
-            ) {
-              etsinLinks =
-                etsinLinks +
-                '<li><a href="' +
-                data.download_url.identifier +
-                '" target="_blank">' +
-                data.title +
-                '</a></li>'
-            }
-          }
-        }
-      )
-      etsinLinks = etsinLinks + '</ul>'
-      if (etsinLinks.indexOf('href') > 0) {
-        return etsinLinks
+      const hasFileLink = (metadata) =>
+        metadata.title != null &&
+        metadata.download_url.identifier
+          .toLowerCase()
+          .includes('latauspalvelu') === false
+      const toHtmlLink = (metadata) =>
+        '<li><a href="' +
+        metadata.download_url.identifier +
+        '" target="_blank">' +
+        metadata.title +
+        '</a></li>'
+      const htmlLinks = rawEtsinMetadata.research_dataset.remote_resources
+        .filter(hasFileLink)
+        .map(toHtmlLink)
+
+      if (htmlLinks.length > 0) {
+        return (
+          '<br>' +
+          translator.getVal('info.metadatalinksheader') +
+          '<ul>' +
+          htmlLinks +
+          '</ul>'
+        )
       }
     }
-
     return null
   }
 
@@ -1621,19 +1603,28 @@ function main() {
       while ((match = regexp.exec(notes)) != null) {
         matches.push(match.index)
       }
-
       matches.reverse()
+
+      const insert = (string, index, value) => {
+        return index > 0
+          ? string.substring(0, index) +
+              value +
+              string.substring(index, string.length)
+          : value + string
+      }
+
       $.each(matches, (loopIdx, matchIdx) => {
-        notes = notes.insert(
+        notes = insert(
+          notes,
           matchIdx + 1,
-          '<a href="' +
+          '<b><a href="' +
             notes.substring(
               notes.indexOf('(', matchIdx) + 1,
               notes.indexOf(')', matchIdx)
             ) +
             '" target="_blank">'
         )
-        notes = notes.insert(notes.indexOf(']', matchIdx), '</a>')
+        notes = insert(notes, notes.indexOf(']', matchIdx), '</a></b>')
         notes = notes.replace(
           notes.substring(
             notes.indexOf('(', matchIdx),
@@ -1855,7 +1846,7 @@ function main() {
         currentDataId
       )
       const indexSource = new source.Vector({
-        format: new format.GeoJSON(),
+        format: new ol_format.GeoJSON(),
         loader: () => {
           $.ajax({
             jsonpCallback: 'loadIndexMapFeatures',
