@@ -20,15 +20,58 @@ import 'bootstrap/dist/css/bootstrap.min.css'
 import 'jquery-ui-bundle/jquery-ui.css'
 import 'ol/ol.css'
 import 'ol-layerswitcher/src/ol-layerswitcher.css'
-import './download.css'
+import './css/download.css'
 
+// PaiTuli backend endpoints
 const METADATA_API = '/api/datasets'
 const DOWNLOAD_API_URL = '/api/download'
 
+// Links tab
+const FTP_LINKS_BASE_URL = 'ftp://ftp.funet.fi/index/geodata/'
+const HTTP_LINKS_BASE_URL = 'http://www.nic.funet.fi/index/geodata/'
+const INFO_LINK_URL = 'https://avaa.tdata.fi/web/paituli/ftp-/-rsync'
+
+// Etsin
+const ETSIN_BASE = '//metax.fairdata.fi' // "//metax-test.csc.fi" "//etsin.avointiede.fi" "//etsin-demo.avointiede.fi"
+const ETSIN_BASE_URN = 'http://urn.fi/' //
+const ETSIN_METADATA_JSON_BASE_URL =
+  ETSIN_BASE + '/rest/datasets?format=json&preferred_identifier='
+
+// GeoServer
+const GEOSERVER_BASE_URL = '//avaa.tdata.fi/geoserver/' // "//avoin-test.csc.fi/geoserver/";
+const INDEX_LAYER = 'paituli:index'
+const LAYER_NAME_MUNICIPALITIES = 'paituli:mml_hallinto_2014_100k'
+const LAYER_NAME_CATCHMENT_AREAS = 'paituli:syke_valuma_maa'
+
+const WFS_INDEX_MAP_LAYER_URL =
+  GEOSERVER_BASE_URL +
+  'wfs?service=WFS&version=2.0.0&request=GetFeature&srsname=epsg:3857&typeNames=' +
+  INDEX_LAYER +
+  "&cql_filter= !key! = '!value!'"
+const WMS_INDEX_MAP_LABEL_LAYER_URL =
+  GEOSERVER_BASE_URL +
+  'wms?service=WMS&LAYERS= ' +
+  INDEX_LAYER +
+  "&CQL_FILTER=data_id = '!value!'"
+const WMS_PAITULI_BASE_URL = GEOSERVER_BASE_URL + 'wms?'
+const WMS_PAITULI_BASE_URL_GWC = GEOSERVER_BASE_URL + 'gwc/service/wms?'
+const WFS_INDEX_MAP_DOWNLOAD_SHAPE =
+  GEOSERVER_BASE_URL +
+  'wfs?service=WFS&version=2.0.0&request=GetFeature&srsname=epsg:4326&typeNames=' +
+  INDEX_LAYER +
+  "&outputFormat=shape-zip&propertyname=label,path,geom&cql_filter= !key! = '!value!'"
+
+// Location search
+const NOMINATIM_API_URL =
+  '//nominatim.openstreetmap.org/search?format=json&q=!query!&addressdetails=0&limit=1'
+const MAX_DOWNLOADABLE_SIZE = 3000
+
 const FINNISH_LANGUAGE = 'fi_FI'
 // const ENGLISH_LANGUAGE = 'en_US'
-let currentLocale = FINNISH_LANGUAGE
 
+// mutable global variables
+let pageDataIdParam = getUrlParameter('data_id')
+let currentLocale = FINNISH_LANGUAGE
 let hakaUser = false
 let currentIndexMapLayer = null
 let metadata = null
@@ -57,8 +100,6 @@ function getUrlParameter(param) {
   }
   return null
 }
-
-let pageDataIdParam = getUrlParameter('data_id')
 
 /* TODO Haka login
 
@@ -165,7 +206,6 @@ function main() {
   drawSelectContainer.hide()
 
   const locationSearchInput = $('#location-search-input')
-
   let currentIndexMapLabelLayer = null
   let currentDataLayer = null
   let currentDataId = null
@@ -174,55 +214,93 @@ function main() {
 
   let mapContainerId = 'map-container'
 
-  // Etsin
-  const ETSIN_BASE = '//metax.fairdata.fi' // "//metax-test.csc.fi" "//etsin.avointiede.fi" "//etsin-demo.avointiede.fi"
-  const ETSIN_BASE_URN = 'http://urn.fi/' //
-  const ETSIN_METADATA_JSON_BASE_URL =
-    ETSIN_BASE + '/rest/datasets?format=json&preferred_identifier='
-
-  // GeoServer
-  const GEOSERVER_BASE_URL = '//avaa.tdata.fi/geoserver/' // "//avoin-test.csc.fi/geoserver/";
-  const INDEX_LAYER = 'paituli:index'
-  const LAYER_NAME_MUNICIPALITIES = 'paituli:mml_hallinto_2014_100k'
-  const LAYER_NAME_CATCHMENT_AREAS = 'paituli:syke_valuma_maa'
-
-  const WFS_INDEX_MAP_LAYER_URL =
-    GEOSERVER_BASE_URL +
-    'wfs?service=WFS&version=2.0.0&request=GetFeature&srsname=epsg:3857&typeNames=' +
-    INDEX_LAYER +
-    "&cql_filter= !key! = '!value!'"
-  const WMS_INDEX_MAP_LABEL_LAYER_URL =
-    GEOSERVER_BASE_URL +
-    'wms?service=WMS&LAYERS= ' +
-    INDEX_LAYER +
-    "&CQL_FILTER=data_id = '!value!'"
-  const WMS_PAITULI_BASE_URL = GEOSERVER_BASE_URL + 'wms?'
-  const WMS_PAITULI_BASE_URL_GWC = GEOSERVER_BASE_URL + 'gwc/service/wms?'
-  const WFS_INDEX_MAP_DOWNLOAD_SHAPE =
-    GEOSERVER_BASE_URL +
-    'wfs?service=WFS&version=2.0.0&request=GetFeature&srsname=epsg:4326&typeNames=' +
-    INDEX_LAYER +
-    "&outputFormat=shape-zip&propertyname=label,path,geom&cql_filter= !key! = '!value!'"
-
-  // Location search
-  const NOMINATIM_API_URL =
-    '//nominatim.openstreetmap.org/search?format=json&q=!query!&addressdetails=0&limit=1'
-  const MAX_DOWNLOADABLE_SIZE = 3000
-
   let prevSelectedTab = null
-
-  let emailModal = null
-  let emailForm = null
-  let emailListModal = null
-  let emailListForm = null
 
   const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
   const emailInput = $('#email-input')
   const emailListInput = $('#email-list-input')
-  const licenceCheckbox = $('#licence-checkbox')
-  const licenceCheckboxList = $('#licence-list-checkbox')
+  const licenseCheckbox = $('#license-checkbox')
+  const licenseCheckboxList = $('#license-list-checkbox')
   const tips = $('#email-modal-tips')
   const listTips = $('#email-list-modal-tips')
+
+  const emailModal = $('#email-modal').dialog({
+    autoOpen: false,
+    height: 'auto',
+    width: 600,
+    modal: true,
+    closeOnEscape: true,
+    draggable: true,
+    resizable: false,
+    title: translator.getVal('email.modalheader'),
+    buttons: [
+      {
+        text: translator.getVal('email.sendButton'),
+        icons: {
+          primary: 'ui-icon-mail-closed',
+        },
+        click: emailData,
+        type: 'submit',
+      },
+      {
+        text: translator.getVal('email.cancelButton'),
+        icons: {
+          primary: 'ui-icon-close',
+        },
+        click: () => $(this).dialog('close'),
+      },
+    ],
+    close: () => {
+      emailForm[0].reset()
+      emailInput.removeClass('ui-state-error')
+      licenseCheckbox.removeClass('ui-state-error')
+    },
+  })
+
+  const emailForm = emailModal.find('form')
+  emailForm.on('submit', (event) => {
+    event.preventDefault()
+    emailData()
+  })
+
+  const emailListModal = $('#email-list-modal').dialog({
+    autoOpen: false,
+    height: 'auto',
+    width: 600,
+    modal: true,
+    closeOnEscape: true,
+    draggable: true,
+    resizable: false,
+    title: translator.getVal('email.modalheaderList'),
+    buttons: [
+      {
+        text: translator.getVal('email.sendButtonList'),
+        icons: {
+          primary: 'ui-icon-mail-closed',
+        },
+        click: emailList,
+        type: 'submit',
+      },
+      {
+        text: translator.getVal('email.cancelButton'),
+        icons: {
+          primary: 'ui-icon-close',
+        },
+        click: () => emailListModal.dialog('close'),
+      },
+    ],
+    close: () => {
+      emailListForm[0].reset()
+      emailListInput.removeClass('ui-state-error')
+      licenseCheckboxList.removeClass('ui-state-error')
+    },
+  })
+
+  const emailListForm = emailListModal.find('form')
+  emailListForm.on('submit', (event) => {
+    event.preventDefault()
+    emailList()
+  })
 
   let fileList = []
   let fileLabelList = []
@@ -262,7 +340,7 @@ function main() {
     }
   }
 
-  function emailDataOrList(input, dlType, licence, modal, tipsOutput) {
+  function emailDataOrList(input, dlType, license, modal, tipsOutput) {
     const emailVal = input.val()
     if (fileList && fileList.length > 0 && emailVal) {
       const downloadRequest = {
@@ -283,7 +361,7 @@ function main() {
       // Validate input fields
       let valid = true
       input.removeClass('ui-state-error')
-      licence.removeClass('ui-state-error')
+      license.removeClass('ui-state-error')
       valid =
         valid &&
         checkLength(
@@ -304,7 +382,7 @@ function main() {
       valid =
         valid &&
         checkIsChecked(
-          licence,
+          license,
           translator.getVal('email.errorCheckboxChecked'),
           tipsOutput
         )
@@ -327,95 +405,18 @@ function main() {
   }
 
   function emailData() {
-    return emailDataOrList(emailInput, 'zip', licenceCheckbox, emailModal, tips)
+    return emailDataOrList(emailInput, 'zip', licenseCheckbox, emailModal, tips)
   }
 
   function emailList() {
     return emailDataOrList(
       emailListInput,
       'list',
-      licenceCheckboxList,
+      licenseCheckboxList,
       emailListModal,
       listTips
     )
   }
-
-  emailModal = $('#email-modal').dialog({
-    autoOpen: false,
-    height: 'auto',
-    width: 600,
-    modal: true,
-    closeOnEscape: true,
-    draggable: true,
-    resizable: false,
-    title: translator.getVal('email.modalheader'),
-    buttons: [
-      {
-        text: translator.getVal('email.sendButton'),
-        icons: {
-          primary: 'ui-icon-mail-closed',
-        },
-        click: emailData,
-        type: 'submit',
-      },
-      {
-        text: translator.getVal('email.cancelButton'),
-        icons: {
-          primary: 'ui-icon-close',
-        },
-        click: () => $(this).dialog('close'),
-      },
-    ],
-    close: () => {
-      emailForm[0].reset()
-      emailInput.removeClass('ui-state-error')
-      licenceCheckbox.removeClass('ui-state-error')
-    },
-  })
-
-  emailForm = emailModal.find('form')
-  emailForm.on('submit', (event) => {
-    event.preventDefault()
-    emailData()
-  })
-
-  emailListModal = $('#email-list-modal').dialog({
-    autoOpen: false,
-    height: 'auto',
-    width: 600,
-    modal: true,
-    closeOnEscape: true,
-    draggable: true,
-    resizable: false,
-    title: translator.getVal('email.modalheaderList'),
-    buttons: [
-      {
-        text: translator.getVal('email.sendButtonList'),
-        icons: {
-          primary: 'ui-icon-mail-closed',
-        },
-        click: emailList,
-        type: 'submit',
-      },
-      {
-        text: translator.getVal('email.cancelButton'),
-        icons: {
-          primary: 'ui-icon-close',
-        },
-        click: () => emailListModal.dialog('close'),
-      },
-    ],
-    close: () => {
-      emailListForm[0].reset()
-      emailListInput.removeClass('ui-state-error')
-      licenceCheckboxList.removeClass('ui-state-error')
-    },
-  })
-  emailListForm = emailListModal.find('form')
-  emailListForm.on('submit', (event) => {
-    event.preventDefault()
-    emailList()
-  })
 
   function setHtmlElementTextValues() {
     $('#dl-service-header h1').text(translator.getVal('appHeader'))
@@ -476,10 +477,6 @@ function main() {
     activate: (event, ui) => (prevSelectedTab = ui.newPanel.get(0).id),
   })
 
-  function strStartsWith(str, prefix) {
-    return str.indexOf(prefix) === 0
-  }
-
   function setInfoContent(contentType, params) {
     switch (contentType) {
       case 'download':
@@ -492,8 +489,6 @@ function main() {
       case 'metadata':
         clearMetadataTabContent()
         createMetadataTabContent()
-        break
-      case 'links':
         createLinksContent(linksTabContentRoot)
         break
       default:
@@ -545,8 +540,6 @@ function main() {
           .getVal('data.searchresult')
           .replace('!features!', features.length)
       )
-
-      setInfoContent('download')
     }
     return false
   }
@@ -608,8 +601,8 @@ function main() {
       id: 'links-container',
     })
 
-    const ftpPath = 'ftp://ftp.funet.fi/index/geodata/' + datasetPath
-    const httpPath = 'http://www.nic.funet.fi/index/geodata/' + datasetPath
+    const ftpPath = FTP_LINKS_BASE_URL + datasetPath
+    const httpPath = HTTP_LINKS_BASE_URL + datasetPath
 
     addLink('http', httpPath, linksContainer)
     addLink('ftp', ftpPath, linksContainer)
@@ -635,9 +628,7 @@ function main() {
     rootElem.append(index_anchor)
     rootElem.append(translator.getVal('info.dlIndexMapInfo') + ' ')
     rootElem.append(
-      translator
-        .getVal('info.linksInfo')
-        .replace('!infolink!', 'https://avaa.tdata.fi/web/paituli/ftp-/-rsync')
+      translator.getVal('info.linksInfo').replace('!infolink!', INFO_LINK_URL)
     )
   }
 
@@ -691,38 +682,38 @@ function main() {
       dlListButton.css('visibility', 'hidden')
     }
 
-    let licenceHeader = $('#download-licence-header')
-    if (!licenceHeader.length) {
-      licenceHeader = $('<h5>', {
-        id: 'download-licence-header',
+    let licenseHeader = $('#download-license-header')
+    if (!licenseHeader.length) {
+      licenseHeader = $('<h5>', {
+        id: 'download-license-header',
         class: 'download-tab-header',
       })
     }
-    licenceHeader.text(translator.getVal('info.documents'))
+    licenseHeader.text(translator.getVal('info.documents'))
 
     //http://www.nic.funet.fi/index/geodata/mml/NLS_terms_of_use.pdf -> crop after geodata/
-    const licenceUrl = getCurrentLayerData('license_url')
-    const dlLicInputId = 'download-licence-input'
-    let dlLicContainer = $('#download-licence-container')
+    const licenseUrl = getCurrentLayerData('license_url')
+    const dlLicInputId = 'download-license-input'
+    let dlLicContainer = $('#download-license-container')
     let dlLicInput = $('#' + dlLicInputId)
-    let dlLicLabelLink = $('#download-licence-link')
+    let dlLicLabelLink = $('#download-license-link')
     if (!dlLicInput.length) {
       dlLicContainer = $('<div>', {
-        id: 'download-licence-container',
+        id: 'download-license-container',
       })
       dlLicLabelLink = $('<a>', {
-        id: 'download-licence-link',
-        href: licenceUrl,
+        id: 'download-license-link',
+        href: licenseUrl,
         target: '_blank',
-        class: 'download-licence-link',
-        'data-value': translator.getVal('info.licence'),
+        class: 'download-license-link',
+        'data-value': translator.getVal('info.license'),
       })
-      dlLicLabelLink.text(translator.getVal('info.licence'))
+      dlLicLabelLink.text(translator.getVal('info.license'))
       dlLicInput = $('<input>', {
         checked: 'checked',
         id: dlLicInputId,
         type: 'checkbox',
-        value: cutLicenseURL(licenceUrl),
+        value: cutLicenseURL(licenseUrl),
         class: 'download-checkbox',
       })
       dlLicInput.appendTo(dlLicContainer)
@@ -741,7 +732,7 @@ function main() {
         clearDownloadTabContent()
         dlButtonWrapper.appendTo(rootElem)
         dlListWrapper.appendTo(rootElem)
-        licenceHeader.appendTo(rootElem)
+        licenseHeader.appendTo(rootElem)
 
         dlLicContainer.appendTo(rootElem)
 
@@ -825,7 +816,7 @@ function main() {
       clearDownloadTabContent()
       dlButtonWrapper.appendTo(rootElem)
       dlListWrapper.appendTo(rootElem)
-      licenceHeader.appendTo(rootElem)
+      licenseHeader.appendTo(rootElem)
       dlLicContainer.appendTo(rootElem)
       downloadFilesHeader.appendTo(rootElem)
       const downloadInfo = $('<div>', {
@@ -841,7 +832,7 @@ function main() {
         dlListButton,
         dlLicInput
       )
-      updateFileLabelListForLicence(dlLicInput, licenceUrl)
+      updateFileLabelListForLicence(dlLicInput, licenseUrl)
     })
     dlButton.on('click', (event) => {
       event.preventDefault()
@@ -874,18 +865,18 @@ function main() {
       }
     })
     updateDownloadFileList(dlButton, dlButtonWrapper, dlListButton, dlLicInput)
-    updateFileLabelListForLicence(dlLicInput, licenceUrl)
+    updateFileLabelListForLicence(dlLicInput, licenseUrl)
   }
 
-  function updateFileLabelListForLicence(dlLicInput, licenceUrl) {
-    const licenceIdx = fileLabelList.indexOf(licenceUrl)
+  function updateFileLabelListForLicence(dlLicInput, licenseUrl) {
+    const licenseIdx = fileLabelList.indexOf(licenseUrl)
     if (dlLicInput.prop('checked')) {
-      if (licenceIdx == -1) {
-        fileLabelList.push(licenceUrl)
+      if (licenseIdx == -1) {
+        fileLabelList.push(licenseUrl)
       }
     } else {
-      if (licenceIdx > -1) {
-        fileLabelList.splice(licenceIdx, 1)
+      if (licenseIdx > -1) {
+        fileLabelList.splice(licenseIdx, 1)
       }
     }
   }
@@ -945,14 +936,14 @@ function main() {
     }
   }
 
-  function updateModal(dataDescription, licenceCheckboxLabel) {
+  function updateModal(dataDescription, licenseCheckboxLabel) {
     const dataDescrContainer = $(dataDescription)
     dataDescrContainer.empty()
 
-    $(licenceCheckboxLabel).html(
+    $(licenseCheckboxLabel).html(
       translator
-        .getVal('email.licencefield')
-        .replace('!licence!', getCurrentLayerData('license_url'))
+        .getVal('email.licensefield')
+        .replace('!license!', getCurrentLayerData('license_url'))
     )
     const dataDescrContent = $('<div>')
     dataDescrContent.text(
@@ -977,11 +968,11 @@ function main() {
   }
 
   function updateEmailModal() {
-    updateModal('#data-description', '#licence-checkbox-label')
+    updateModal('#data-description', '#license-checkbox-label')
   }
 
   function updateEmailListModal() {
-    updateModal('#data-description-list', '#licence-list-checkbox-label')
+    updateModal('#data-description-list', '#license-list-checkbox-label')
   }
 
   function clearFeatureInfoTabContent() {
@@ -1201,10 +1192,9 @@ function main() {
       updateMap()
     })
 
-    createSearchField()
+    updateProducerList(producerInput)
 
     if (pageDataIdParam !== null) {
-      updateProducerList(producerInput)
       setDataIdVars(
         producerInput,
         dataInput,
@@ -1213,8 +1203,6 @@ function main() {
         formatInput,
         coordsysInput
       )
-    } else {
-      updateProducerList(producerInput)
     }
   }
 
@@ -1263,7 +1251,7 @@ function main() {
   }
 
   function updateDataList(producerInput, dataInput) {
-    if (!strStartsWith(producerInput.val(), '--')) {
+    if (!producerInput.val().startsWith('--')) {
       const names = metadata
         .filter((data) => data.org === producerInput.val())
         .filter(onlyAuthorized)
@@ -1276,7 +1264,7 @@ function main() {
   }
 
   function updateScaleList(producerInput, dataInput, scaleInput) {
-    if (!strStartsWith(dataInput.val(), '--')) {
+    if (!dataInput.val().startsWith('--')) {
       const scales = metadata
         .filter((data) => data.org === producerInput.val())
         .filter((data) => data.name === dataInput.val())
@@ -1289,7 +1277,7 @@ function main() {
   }
 
   function updateYearList(producerInput, dataInput, scaleInput, yearInput) {
-    if (!strStartsWith(scaleInput.val(), '--')) {
+    if (!scaleInput.val().startsWith('--')) {
       const years = metadata
         .filter((data) => data.org === producerInput.val())
         .filter((data) => data.name === dataInput.val())
@@ -1309,7 +1297,7 @@ function main() {
     yearInput,
     formatInput
   ) {
-    if (!strStartsWith(yearInput.val(), '--')) {
+    if (!yearInput.val().startsWith('--')) {
       const formats = metadata
         .filter((data) => data.org === producerInput.val())
         .filter((data) => data.name === dataInput.val())
@@ -1331,7 +1319,7 @@ function main() {
     formatInput,
     coordsysInput
   ) {
-    if (!strStartsWith(formatInput.val(), '--')) {
+    if (!formatInput.val().startsWith('--')) {
       const coordsyses = metadata
         .filter((data) => data.org === producerInput.val())
         .filter((data) => data.name === dataInput.val())
@@ -2239,6 +2227,8 @@ function main() {
 
   initFormInputs('form-input-container')
   initLocationSearch()
+  createSearchField()
+
   resetMapView()
 }
 
