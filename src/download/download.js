@@ -1718,7 +1718,7 @@ function main() {
   }
 
   function loadDataLayer() {
-    if (datasets.hasCurrent() && currentDataUrl !== null) {
+    if (datasets.hasCurrent() && currentDataUrl != null) {
       if (currentDataUrl.indexOf('protected') > -1) {
         currentDataLayer = new layer.Image({
           title: translate('map.datamap'),
