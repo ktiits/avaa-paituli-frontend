@@ -14,67 +14,24 @@ import * as style from 'ol/style'
 import LayerSwitcher from 'ol-layerswitcher'
 import proj4 from 'proj4'
 
-import Translator from './translator'
+import datasets from './datasets'
+import { translate } from '../shared/translations'
+import { LANGUAGE } from '../shared/constants'
+import { LAYER, URL } from '../shared/urls'
 
 import 'bootstrap/dist/css/bootstrap.min.css'
 import 'jquery-ui-bundle/jquery-ui.css'
 import 'ol/ol.css'
 import 'ol-layerswitcher/src/ol-layerswitcher.css'
-import './css/download.css'
+import '../css/download.css'
 
-// PaiTuli backend endpoints
-const METADATA_API = '/api/datasets'
-const DOWNLOAD_API_URL = '/api/download'
-
-// Links tab
-const FTP_LINKS_BASE_URL = 'ftp://ftp.funet.fi/index/geodata/'
-const HTTP_LINKS_BASE_URL = 'http://www.nic.funet.fi/index/geodata/'
-const INFO_LINK_URL = 'https://avaa.tdata.fi/web/paituli/ftp-/-rsync'
-
-// Etsin
-const ETSIN_BASE = '//metax.fairdata.fi' // "//metax-test.csc.fi" "//etsin.avointiede.fi" "//etsin-demo.avointiede.fi"
-const ETSIN_BASE_URN = 'http://urn.fi/' //
-const ETSIN_METADATA_JSON_BASE_URL =
-  ETSIN_BASE + '/rest/datasets?format=json&preferred_identifier='
-
-// GeoServer
-const GEOSERVER_BASE_URL = '//avaa.tdata.fi/geoserver/' // "//avoin-test.csc.fi/geoserver/";
-const INDEX_LAYER = 'paituli:index'
-const LAYER_NAME_MUNICIPALITIES = 'paituli:mml_hallinto_2014_100k'
-const LAYER_NAME_CATCHMENT_AREAS = 'paituli:syke_valuma_maa'
-
-const WFS_INDEX_MAP_LAYER_URL =
-  GEOSERVER_BASE_URL +
-  'wfs?service=WFS&version=2.0.0&request=GetFeature&srsname=epsg:3857&typeNames=' +
-  INDEX_LAYER +
-  "&cql_filter= !key! = '!value!'"
-const WMS_INDEX_MAP_LABEL_LAYER_URL =
-  GEOSERVER_BASE_URL +
-  'wms?service=WMS&LAYERS= ' +
-  INDEX_LAYER +
-  "&CQL_FILTER=data_id = '!value!'"
-const WMS_PAITULI_BASE_URL = GEOSERVER_BASE_URL + 'wms?'
-const WMS_PAITULI_BASE_URL_GWC = GEOSERVER_BASE_URL + 'gwc/service/wms?'
-const WFS_INDEX_MAP_DOWNLOAD_SHAPE =
-  GEOSERVER_BASE_URL +
-  'wfs?service=WFS&version=2.0.0&request=GetFeature&srsname=epsg:4326&typeNames=' +
-  INDEX_LAYER +
-  "&outputFormat=shape-zip&propertyname=label,path,geom&cql_filter= !key! = '!value!'"
-
-// Location search
-const NOMINATIM_API_URL =
-  '//nominatim.openstreetmap.org/search?format=json&q=!query!&addressdetails=0&limit=1'
 const MAX_DOWNLOADABLE_SIZE = 3000
-
-const FINNISH_LANGUAGE = 'fi_FI'
-// const ENGLISH_LANGUAGE = 'en_US'
 
 // mutable global variables
 let pageDataIdParam = getUrlParameter('data_id')
-let currentLocale = FINNISH_LANGUAGE
+let currentLocale = LANGUAGE.FINNISH
 let hakaUser = false
 let currentIndexMapLayer = null
-let metadata = null
 let selectedTool = ''
 
 proj4.defs([
@@ -139,13 +96,11 @@ function checkAccessRights() {
 */
 
 function checkParameterDatasetAccess() {
-  loadMetadata(() => {
+  datasets.fetch(() => {
     if (pageDataIdParam === null || pageDataIdParam.length == 0) {
       main()
     } else {
-      const selectedData = metadata.find(
-        (data) => data.data_id === pageDataIdParam
-      )
+      const selectedData = datasets.getById(pageDataIdParam)
       if (selectedData != null && selectedData.access == 2 && !hakaUser) {
         // TODO: redirect user to login page
         window.location.replace('/')
@@ -153,13 +108,6 @@ function checkParameterDatasetAccess() {
         main()
       }
     }
-  })
-}
-
-function loadMetadata(afterMetadataLoadCallback) {
-  $.getJSON(METADATA_API, (data) => {
-    metadata = data
-    afterMetadataLoadCallback()
   })
 }
 
@@ -192,8 +140,6 @@ function main() {
     }),
   })
 
-  const translator = new Translator(currentLocale)
-
   const panSelectBtn = $('#panselection-button')
   const selectSelectContainer = $('#selectselection-container')
   const clearSelectContainer = $('#clearselection-container')
@@ -208,7 +154,6 @@ function main() {
   const locationSearchInput = $('#location-search-input')
   let currentIndexMapLabelLayer = null
   let currentDataLayer = null
-  let currentDataId = null
   let currentDataUrl = null
   let currentMaxResolution = null
 
@@ -232,10 +177,10 @@ function main() {
     closeOnEscape: true,
     draggable: true,
     resizable: false,
-    title: translator.getVal('email.modalheader'),
+    title: translate('email.modalheader'),
     buttons: [
       {
-        text: translator.getVal('email.sendButton'),
+        text: translate('email.sendButton'),
         icons: {
           primary: 'ui-icon-mail-closed',
         },
@@ -243,7 +188,7 @@ function main() {
         type: 'submit',
       },
       {
-        text: translator.getVal('email.cancelButton'),
+        text: translate('email.cancelButton'),
         icons: {
           primary: 'ui-icon-close',
         },
@@ -271,10 +216,10 @@ function main() {
     closeOnEscape: true,
     draggable: true,
     resizable: false,
-    title: translator.getVal('email.modalheaderList'),
+    title: translate('email.modalheaderList'),
     buttons: [
       {
-        text: translator.getVal('email.sendButtonList'),
+        text: translate('email.sendButtonList'),
         icons: {
           primary: 'ui-icon-mail-closed',
         },
@@ -282,7 +227,7 @@ function main() {
         type: 'submit',
       },
       {
-        text: translator.getVal('email.cancelButton'),
+        text: translate('email.cancelButton'),
         icons: {
           primary: 'ui-icon-close',
         },
@@ -343,19 +288,20 @@ function main() {
   function emailDataOrList(input, dlType, license, modal, tipsOutput) {
     const emailVal = input.val()
     if (fileList && fileList.length > 0 && emailVal) {
+      const current = datasets.getCurrent()
       const downloadRequest = {
-        data_id: currentDataId,
+        data_id: current.data_id,
         downloadType: dlType.toUpperCase(),
         email: emailVal,
         language: currentLocale,
         filePaths: fileList,
         filenames: fileLabelList,
-        org: getCurrentLayerData('org'),
-        data: getCurrentLayerData('name'),
-        scale: getCurrentLayerData('scale'),
-        year: getCurrentLayerData('year'),
-        coord_sys: getCurrentLayerData('coord_sys'),
-        format: getCurrentLayerData('format'),
+        org: current.org,
+        data: current.name,
+        scale: current.scale,
+        year: current.year,
+        coord_sys: current.coord_sys,
+        format: current.format,
       }
 
       // Validate input fields
@@ -368,7 +314,7 @@ function main() {
           input,
           1,
           80,
-          translator.getVal('email.errorEmailLength'),
+          translate('email.errorEmailLength'),
           tipsOutput
         )
       valid =
@@ -376,21 +322,21 @@ function main() {
         checkRegexp(
           input,
           emailRegex,
-          translator.getVal('email.errorEmailFormat'),
+          translate('email.errorEmailFormat'),
           tipsOutput
         )
       valid =
         valid &&
         checkIsChecked(
           license,
-          translator.getVal('email.errorCheckboxChecked'),
+          translate('email.errorCheckboxChecked'),
           tipsOutput
         )
 
       if (valid) {
         modal.data('email', input.val())
         $.post({
-          url: DOWNLOAD_API_URL,
+          url: URL.DOWNLOAD_API,
           data: JSON.stringify(downloadRequest),
           contentType: 'application/json; charset=utf-8',
           dataType: 'json',
@@ -419,47 +365,37 @@ function main() {
   }
 
   function setHtmlElementTextValues() {
-    $('#dl-service-header h1').text(translator.getVal('appHeader'))
-    $('#data-form legend').text(translator.getVal('data.header'))
-    $('#resetview-button').attr('title', translator.getVal('map.reset'))
-    $('#clearselection-button').attr(
-      'title',
-      translator.getVal('map.clearSelection')
-    )
-    $('#panselection-button').attr('title', translator.getVal('map.pan'))
-    $('#selectselection-button').attr('title', translator.getVal('map.select'))
-    $('#infoselection-button').attr('title', translator.getVal('map.info'))
-    $('#drawselection-button').attr('title', translator.getVal('map.draw'))
+    $('#dl-service-header h1').text(translate('appHeader'))
+    $('#data-form legend').text(translate('data.header'))
+    $('#resetview-button').attr('title', translate('map.reset'))
+    $('#clearselection-button').attr('title', translate('map.clearSelection'))
+    $('#panselection-button').attr('title', translate('map.pan'))
+    $('#selectselection-button').attr('title', translate('map.select'))
+    $('#infoselection-button').attr('title', translate('map.info'))
+    $('#drawselection-button').attr('title', translate('map.draw'))
 
-    $('#download-container-anchor').text(translator.getVal('info.downloadtab'))
-    $('#feature-info-container-anchor').text(
-      translator.getVal('info.featureinfotab')
-    )
-    $('#metadata-container-anchor').text(translator.getVal('info.metadatatab'))
-    $('#links-container-anchor').text(translator.getVal('info.linkstab'))
-    locationSearchInput.attr(
-      'placeholder',
-      translator.getVal('map.locationsearch')
-    )
-    $('#email-input-label').text(translator.getVal('email.emailfield'))
+    $('#download-container-anchor').text(translate('info.downloadtab'))
+    $('#feature-info-container-anchor').text(translate('info.featureinfotab'))
+    $('#metadata-container-anchor').text(translate('info.metadatatab'))
+    $('#links-container-anchor').text(translate('info.linkstab'))
+    locationSearchInput.attr('placeholder', translate('map.locationsearch'))
+    $('#email-input-label').text(translate('email.emailfield'))
     $('#email-input').attr(
       'placeholder',
-      translator.getVal('email.emailfieldPlaceholder')
+      translate('email.emailfieldPlaceholder')
     )
-    $('#email-modal-form fieldset legend').text(
-      translator.getVal('email.inputsheader')
-    )
-    $('#email-instructions').text(translator.getVal('email.info'))
+    $('#email-modal-form fieldset legend').text(translate('email.inputsheader'))
+    $('#email-instructions').text(translate('email.info'))
 
-    $('#email-list-input-label').text(translator.getVal('email.emailfield'))
+    $('#email-list-input-label').text(translate('email.emailfield'))
     $('#email-list-input').attr(
       'placeholder',
-      translator.getVal('email.emailfieldPlaceholder')
+      translate('email.emailfieldPlaceholder')
     )
     $('#email-list-modal-form fieldset legend').text(
-      translator.getVal('email.inputsheader')
+      translate('email.inputsheader')
     )
-    $('#email-list-instructions').text(translator.getVal('email.info'))
+    $('#email-list-instructions').text(translate('email.info'))
   }
 
   setHtmlElementTextValues()
@@ -504,7 +440,7 @@ function main() {
       id: 'search-button',
       href: '',
     })
-    searchBtn.text(translator.getVal('data.search'))
+    searchBtn.text(translate('data.search'))
     searchBtn.on('click', searchFeatures)
 
     const searchField = $('<input>', {
@@ -536,9 +472,7 @@ function main() {
       const features = getSearchResultFeatures(searchStr)
       selectedFeatures.extend(features)
       $('#feature-search-results').text(
-        translator
-          .getVal('data.searchresult')
-          .replace('!features!', features.length)
+        translate('data.searchresult').replace('!features!', features.length)
       )
     }
     return false
@@ -589,11 +523,11 @@ function main() {
     rootElem.empty()
     const infoText = createParagraph(
       '#links-info',
-      translator.getVal('info.linksIntro')
+      translate('info.linksIntro')
     )
     infoText.appendTo(rootElem)
 
-    const datasetPath = getCurrentLayerData('funet')
+    const datasetPath = datasets.getCurrent().funet
     const rsyncPath =
       'rsync://rsync.nic.funet.fi/ftp/index/geodata/' + datasetPath
 
@@ -601,18 +535,18 @@ function main() {
       id: 'links-container',
     })
 
-    const ftpPath = FTP_LINKS_BASE_URL + datasetPath
-    const httpPath = HTTP_LINKS_BASE_URL + datasetPath
+    const ftpPath = URL.FTP_LINKS_BASE + datasetPath
+    const httpPath = URL.HTTP_LINKS_BASE + datasetPath
 
     addLink('http', httpPath, linksContainer)
     addLink('ftp', ftpPath, linksContainer)
     linksContainer.append('<strong>rsync: </strong>' + rsyncPath)
     linksContainer.appendTo(rootElem)
 
-    const url = WFS_INDEX_MAP_DOWNLOAD_SHAPE.replace(
+    const url = URL.WFS_INDEX_MAP_DOWNLOAD_SHAPE.replace(
       '!key!',
       'data_id'
-    ).replace('!value!', currentDataId)
+    ).replace('!value!', datasets.getCurrent().data_id)
 
     let index_anchor = $('#index-anchor')
     if (!index_anchor.length) {
@@ -622,13 +556,13 @@ function main() {
         target: '_blank',
       })
     }
-    index_anchor.text(translator.getVal('info.downloadindex') + ' ')
+    index_anchor.text(translate('info.downloadindex') + ' ')
 
     $('<br>').appendTo(rootElem)
     rootElem.append(index_anchor)
-    rootElem.append(translator.getVal('info.dlIndexMapInfo') + ' ')
+    rootElem.append(translate('info.dlIndexMapInfo') + ' ')
     rootElem.append(
-      translator.getVal('info.linksInfo').replace('!infolink!', INFO_LINK_URL)
+      translate('info.linksInfo').replace('!infolink!', URL.INFO_LINK)
     )
   }
 
@@ -650,10 +584,7 @@ function main() {
       })
     }
     dlButton.text(
-      translator.getVal('info.download') +
-        ': ~' +
-        getTotalDownloadSize() +
-        ' Mb'
+      translate('info.download') + ': ~' + getTotalDownloadSize() + ' Mb'
     )
     dlButton.appendTo(dlButtonWrapper)
 
@@ -661,7 +592,7 @@ function main() {
     if (!dlListWrapper.length) {
       dlListWrapper = $('<a>', {
         id: 'dl-list-wrapper',
-        title: translator.getVal('info.dlListTooltip'),
+        title: translate('info.dlListTooltip'),
       })
     }
     let dlListButton = $('#download-list-button')
@@ -671,11 +602,11 @@ function main() {
         id: 'download-list-button',
       })
     }
-    dlListButton.text(translator.getVal('info.downloadlist'))
+    dlListButton.text(translate('info.downloadlist'))
     dlListButton.appendTo(dlListWrapper)
 
     // Hide files list download option, if HAKA-dataset, these are not in FTP.
-    const dataAccess = getCurrentLayerData('access')
+    const dataAccess = datasets.getCurrent().access
     if (dataAccess == 1) {
       dlListButton.css('visibility', 'visible')
     } else {
@@ -689,10 +620,10 @@ function main() {
         class: 'download-tab-header',
       })
     }
-    licenseHeader.text(translator.getVal('info.documents'))
+    licenseHeader.text(translate('info.documents'))
 
     //http://www.nic.funet.fi/index/geodata/mml/NLS_terms_of_use.pdf -> crop after geodata/
-    const licenseUrl = getCurrentLayerData('license_url')
+    const licenseUrl = datasets.getCurrent().license_url
     const dlLicInputId = 'download-license-input'
     let dlLicContainer = $('#download-license-container')
     let dlLicInput = $('#' + dlLicInputId)
@@ -706,9 +637,9 @@ function main() {
         href: licenseUrl,
         target: '_blank',
         class: 'download-license-link',
-        'data-value': translator.getVal('info.license'),
+        'data-value': translate('info.license'),
       })
-      dlLicLabelLink.text(translator.getVal('info.license'))
+      dlLicLabelLink.text(translate('info.license'))
       dlLicInput = $('<input>', {
         checked: 'checked',
         id: dlLicInputId,
@@ -724,7 +655,7 @@ function main() {
       id: 'download-file-header',
       class: 'download-tab-header',
     })
-    downloadFilesHeader.text(translator.getVal('info.files'))
+    downloadFilesHeader.text(translate('info.files'))
 
     if (selectedFeatures.getLength() > 0) {
       let dataListContainerElem = $('#data-download-list')
@@ -822,7 +753,7 @@ function main() {
       const downloadInfo = $('<div>', {
         id: 'download-info-container',
       })
-      downloadInfo.text(translator.getVal('info.info'))
+      downloadInfo.text(translate('info.info'))
       downloadInfo.appendTo(rootElem)
     }
     dlLicInput.on('change', () => {
@@ -897,10 +828,7 @@ function main() {
 
   function updateDownloadButton(dlButton, dlButtonWrapper, dlLicInput) {
     dlButton.text(
-      translator.getVal('info.download') +
-        ': ~' +
-        getTotalDownloadSize() +
-        ' Mb'
+      translate('info.download') + ': ~' + getTotalDownloadSize() + ' Mb'
     )
     if (
       (dlLicInput.prop('checked')
@@ -912,7 +840,7 @@ function main() {
       dlButtonWrapper.removeAttr('title')
     } else {
       if (getTotalDownloadSize() > MAX_DOWNLOADABLE_SIZE) {
-        dlButtonWrapper.attr('title', translator.getVal('info.downloadTooltip'))
+        dlButtonWrapper.attr('title', translate('info.downloadTooltip'))
       }
       dlButton.prop('disabled', true)
     }
@@ -940,26 +868,26 @@ function main() {
     const dataDescrContainer = $(dataDescription)
     dataDescrContainer.empty()
 
+    const current = datasets.getCurrent()
+
     $(licenseCheckboxLabel).html(
-      translator
-        .getVal('email.licensefield')
-        .replace('!license!', getCurrentLayerData('license_url'))
+      translate('email.licensefield').replace('!license!', current.license_url)
     )
     const dataDescrContent = $('<div>')
     dataDescrContent.text(
-      translator.getVal('email.datasetinfo') +
+      translate('email.datasetinfo') +
         ': ' +
-        getCurrentLayerData('org') +
+        current.org +
         ', ' +
-        getCurrentLayerData('name') +
+        current.name +
         ', ' +
-        getCurrentLayerData('scale') +
+        current.scale +
         ', ' +
-        getCurrentLayerData('year') +
+        current.year +
         ', ' +
-        getCurrentLayerData('coord_sys') +
+        current.coord_sys +
         ', ' +
-        getCurrentLayerData('format') +
+        current.format +
         ': ' +
         getTotalDownloadSize() +
         ' Mb'
@@ -1041,7 +969,7 @@ function main() {
       class: 'form-input-label',
       id: 'producer-label',
     })
-    producerLabel.append(translator.getVal('data.producer'))
+    producerLabel.append(translate('data.producer'))
 
     const producerInput = $('<select>', {
       class: 'form-input',
@@ -1058,7 +986,7 @@ function main() {
       class: 'form-input-label',
       id: 'data-label',
     })
-    dataLabel.append(translator.getVal('data.data'))
+    dataLabel.append(translate('data.data'))
 
     const dataInput = $('<select>', {
       class: 'form-input',
@@ -1075,7 +1003,7 @@ function main() {
       class: 'form-input-label',
       id: 'scale-label',
     })
-    scaleLabel.append(translator.getVal('data.scale'))
+    scaleLabel.append(translate('data.scale'))
     const scaleInput = $('<select>', {
       class: 'form-input',
       id: scaleInputId,
@@ -1091,7 +1019,7 @@ function main() {
       class: 'form-input-label',
       id: 'year-label',
     })
-    yearLabel.append(translator.getVal('data.year'))
+    yearLabel.append(translate('data.year'))
     const yearInput = $('<select>', {
       class: 'form-input',
       id: yearInputId,
@@ -1107,7 +1035,7 @@ function main() {
       class: 'form-input-label',
       id: 'format-label',
     })
-    formatLabel.append(translator.getVal('data.format'))
+    formatLabel.append(translate('data.format'))
     const formatInput = $('<select>', {
       class: 'form-input',
       id: formatInputId,
@@ -1123,7 +1051,7 @@ function main() {
       class: 'form-input-label',
       id: 'coordsys-label',
     })
-    coordsysLabel.append(translator.getVal('data.coordSys'))
+    coordsysLabel.append(translate('data.coordSys'))
     const coordsysInput = $('<select>', {
       class: 'form-input',
       id: coordsysInputId,
@@ -1167,27 +1095,28 @@ function main() {
       )
     )
     $('#' + coordsysInputId).on('change', () => {
-      const selectedData = metadata.find(
-        (data) =>
-          data.org === producerInput.val() &&
-          data.name === dataInput.val() &&
-          data.scale === scaleInput.val() &&
-          data.year === yearInput.val() &&
-          data.format === formatInput.val() &&
-          data.coord_sys === coordsysInput.val()
-      )
+      const selectedData = datasets
+        .getAll()
+        .find(
+          (data) =>
+            data.org === producerInput.val() &&
+            data.name === dataInput.val() &&
+            data.scale === scaleInput.val() &&
+            data.year === yearInput.val() &&
+            data.format === formatInput.val() &&
+            data.coord_sys === coordsysInput.val()
+        )
 
       if (typeof selectedData !== 'undefined') {
-        currentDataId = selectedData.data_id
-        const dataUrl = getCurrentLayerData('data_url')
-
+        datasets.setCurrent(selectedData.data_id)
+        const dataUrl = datasets.getCurrent().data_url
         if (dataUrl !== null) {
           currentDataUrl = dataUrl
         } else {
           currentDataUrl = null
         }
       } else {
-        currentDataId = null
+        datasets.clearCurrent()
       }
       updateMap()
     })
@@ -1214,9 +1143,7 @@ function main() {
     formatInput,
     coordsysInput
   ) {
-    const selectedData = metadata.find(
-      (data) => data.data_id === pageDataIdParam
-    )
+    const selectedData = datasets.getById(pageDataIdParam)
     if (typeof selectedData !== 'undefined') {
       producerInput.val(selectedData.org)
       producerInput.trigger('change')
@@ -1243,7 +1170,8 @@ function main() {
   }
 
   function updateProducerList(producerInput) {
-    const producers = metadata
+    const producers = datasets
+      .getAll()
       .filter(onlyAuthorized)
       .map((data) => data.org)
       .filter(onlyDistinct)
@@ -1252,7 +1180,8 @@ function main() {
 
   function updateDataList(producerInput, dataInput) {
     if (!producerInput.val().startsWith('--')) {
-      const names = metadata
+      const names = datasets
+        .getAll()
         .filter((data) => data.org === producerInput.val())
         .filter(onlyAuthorized)
         .map((data) => data.name)
@@ -1265,7 +1194,8 @@ function main() {
 
   function updateScaleList(producerInput, dataInput, scaleInput) {
     if (!dataInput.val().startsWith('--')) {
-      const scales = metadata
+      const scales = datasets
+        .getAll()
         .filter((data) => data.org === producerInput.val())
         .filter((data) => data.name === dataInput.val())
         .map((data) => data.scale)
@@ -1278,7 +1208,8 @@ function main() {
 
   function updateYearList(producerInput, dataInput, scaleInput, yearInput) {
     if (!scaleInput.val().startsWith('--')) {
-      const years = metadata
+      const years = datasets
+        .getAll()
         .filter((data) => data.org === producerInput.val())
         .filter((data) => data.name === dataInput.val())
         .filter((data) => data.scale === scaleInput.val())
@@ -1298,7 +1229,8 @@ function main() {
     formatInput
   ) {
     if (!yearInput.val().startsWith('--')) {
-      const formats = metadata
+      const formats = datasets
+        .getAll()
         .filter((data) => data.org === producerInput.val())
         .filter((data) => data.name === dataInput.val())
         .filter((data) => data.scale === scaleInput.val())
@@ -1320,7 +1252,8 @@ function main() {
     coordsysInput
   ) {
     if (!formatInput.val().startsWith('--')) {
-      const coordsyses = metadata
+      const coordsyses = datasets
+        .getAll()
         .filter((data) => data.org === producerInput.val())
         .filter((data) => data.name === dataInput.val())
         .filter((data) => data.scale === scaleInput.val())
@@ -1359,7 +1292,7 @@ function main() {
     inputElem.empty()
     inputElem.prop('disabled', false)
     if (isProducerInput) {
-      let title = translator.getVal('data.selectProducer')
+      let title = translate('data.selectProducer')
       const optionElem = $('<option>', {
         value: title,
       })
@@ -1433,22 +1366,22 @@ function main() {
   }
 
   function createMetadataTabContent() {
-    const metadataURN = getCurrentLayerData('meta')
+    const metadataURN = datasets.getCurrent().meta
     const metadataInfoLabel = $('<div>', {
       id: 'metadata-info-label',
     })
     if (metadataURN !== null) {
-      const metadataBaseUrl = ETSIN_BASE_URN
       metadataInfoLabel.append(
-        translator
-          .getVal('info.metadatainfo')
-          .replace('!metadata_url!', metadataBaseUrl + flipURN(metadataURN))
+        translate('info.metadatainfo').replace(
+          '!metadata_url!',
+          URL.ETSIN_METADATA_BASE + flipURN(metadataURN)
+        )
       )
       metadataTabContentRoot.append(metadataInfoLabel)
     }
 
     const errorFunction = (metadataNotes) => {
-      metadataNotes.html(translator.getVal('info.nometadataavailable'))
+      metadataNotes.html(translate('info.nometadataavailable'))
       metadataTabContentRoot.append(metadataNotes)
     }
 
@@ -1456,12 +1389,10 @@ function main() {
       const notesHtml = getNotesAsHtmlFromEtsinMetadata(rawEtsinMetadata)
       const linksHtml = getLinksAsHtmlFromEtsinMetadata(rawEtsinMetadata)
       if (rawEtsinMetadata == null || notesHtml == null) {
-        metadataNotes.html(translator.getVal('info.nometadataavailable'))
+        metadataNotes.html(translate('info.nometadataavailable'))
       } else {
         metadataNotes.html(
-          translator.getVal('info.metadatacontentheader') +
-            notesHtml +
-            linksHtml
+          translate('info.metadatacontentheader') + notesHtml + linksHtml
         )
       }
       if (metadataTabContentRoot.children().length >= 2) {
@@ -1503,7 +1434,7 @@ function main() {
       if (htmlLinks.length > 0) {
         return (
           '<br>' +
-          translator.getVal('info.metadatalinksheader') +
+          translate('info.metadatalinksheader') +
           '<ul>' +
           htmlLinks +
           '</ul>'
@@ -1517,7 +1448,7 @@ function main() {
   function getNotesAsHtmlFromEtsinMetadata(rawEtsinMetadata) {
     if (rawEtsinMetadata != null) {
       let notes =
-        currentLocale == FINNISH_LANGUAGE
+        currentLocale == LANGUAGE.FINNISH
           ? rawEtsinMetadata.research_dataset.description.fi
           : rawEtsinMetadata.research_dataset.description.en
       if (notes == null) {
@@ -1603,7 +1534,7 @@ function main() {
     errorFn
   ) {
     $.ajax({
-      url: ETSIN_METADATA_JSON_BASE_URL + flipURN(metadataURN),
+      url: URL.ETSIN_METADATA_JSON_BASE + flipURN(metadataURN),
       success: (data) => successFn(data, metadataNotes),
       error: () => errorFn(metadataNotes),
     })
@@ -1613,7 +1544,7 @@ function main() {
     const featureInfoDefaultLabel = $('<div>', {
       id: 'feature-info-default-label',
     })
-    featureInfoDefaultLabel.append(translator.getVal('info.featureinfodefault'))
+    featureInfoDefaultLabel.append(translate('info.featureinfodefault'))
     featureInfoTabContentRoot.append(featureInfoDefaultLabel)
   }
 
@@ -1629,7 +1560,7 @@ function main() {
     clearInfoBoxTabs()
     clearSearchResults()
     $('#feature-search-field').value = ''
-    if (currentDataId != null) {
+    if (datasets.hasCurrent()) {
       setInfoContent('metadata')
       setFeatureInfoTabDefaultContent()
       loadIndexLayer()
@@ -1639,8 +1570,8 @@ function main() {
         currentIndexMapLayer.getSource().once('change', (event) => {
           let hasInfoTab = false
           if (event.target.getState() == 'ready' && isFirstTimeLoaded) {
-            hasInfoTab = layerHasFeatureInfo()
-            mapsheets = getCurrentLayerData('map_sheets')
+            hasInfoTab = datasets.hasFeatureInfo()
+            mapsheets = datasets.getCurrent().map_sheets
             if (mapsheets > 1) {
               featureSearchContainer.css('visibility', 'visible')
             } else if (mapsheets === 1) {
@@ -1667,7 +1598,7 @@ function main() {
           })
         }
 
-        const maxScaleResult = getCurrentLayerData('data_max_scale')
+        const maxScaleResult = datasets.getCurrent().data_max_scale
         if (maxScaleResult !== null) {
           currentMaxResolution = getMapResolutionFromScale(
             parseInt(maxScaleResult)
@@ -1700,10 +1631,6 @@ function main() {
     }
   }
 
-  function layerHasFeatureInfo() {
-    return getCurrentLayerData('data_url') !== null
-  }
-
   //Show map related tools
   function toggleMapControlButtonsVisibility() {
     // If more than 1 mapsheet, show mapsheet selection tools
@@ -1717,7 +1644,7 @@ function main() {
       drawSelectContainer.hide()
     }
     // If layers has feature info, show info tool and container for results
-    if (layerHasFeatureInfo()) {
+    if (datasets.hasFeatureInfo()) {
       infoSelectContainer.show()
       $('#feature-info-container-tab').show()
     } else {
@@ -1729,27 +1656,11 @@ function main() {
     }
   }
 
-  function getCurrentLayerData(field) {
-    const value = metadata
-      .filter((data) => data.data_id === currentDataId)
-      .map((data) => data[field])
-    if (
-      typeof value !== 'undefined' &&
-      value !== null &&
-      typeof value[0] !== 'undefined' &&
-      value[0] !== null
-    ) {
-      return value[0]
-    } else {
-      return null
-    }
-  }
-
   function loadIndexMapLabelLayer() {
-    if (currentDataId !== null) {
-      const url = WMS_INDEX_MAP_LABEL_LAYER_URL.replace(
+    if (datasets.hasCurrent()) {
+      const url = URL.WMS_INDEX_MAP_LABEL_LAYER.replace(
         '!value!',
-        currentDataId
+        datasets.getCurrent().data_id
       )
       const src = new source.ImageWMS({
         url: url,
@@ -1767,10 +1678,10 @@ function main() {
   }
 
   function loadIndexLayer() {
-    if (currentDataId !== null) {
-      const url = WFS_INDEX_MAP_LAYER_URL.replace('!key!', 'data_id').replace(
+    if (datasets.hasCurrent()) {
+      const url = URL.WFS_INDEX_MAP_LAYER.replace('!key!', 'data_id').replace(
         '!value!',
-        currentDataId
+        datasets.getCurrent().data_id
       )
       const indexSource = new source.Vector({
         format: new ol_format.GeoJSON(),
@@ -1790,7 +1701,7 @@ function main() {
       })
 
       currentIndexMapLayer = new layer.Vector({
-        title: translator.getVal('map.indexmap'),
+        title: translate('map.indexmap'),
         source: indexSource,
         visible: true,
         style: new style.Style({
@@ -1807,12 +1718,12 @@ function main() {
   }
 
   function loadDataLayer() {
-    if (currentDataId !== null && currentDataUrl !== null) {
+    if (datasets.hasCurrent() && currentDataUrl !== null) {
       if (currentDataUrl.indexOf('protected') > -1) {
         currentDataLayer = new layer.Image({
-          title: translator.getVal('map.datamap'),
+          title: translate('map.datamap'),
           source: new source.ImageWMS({
-            url: WMS_PAITULI_BASE_URL,
+            url: URL.WMS_PAITULI_BASE,
             params: { LAYERS: currentDataUrl, VERSION: '1.1.1' },
             serverType: 'geoserver',
           }),
@@ -1820,9 +1731,9 @@ function main() {
         })
       } else {
         currentDataLayer = new layer.Tile({
-          title: translator.getVal('map.datamap'),
+          title: translate('map.datamap'),
           source: new source.TileWMS({
-            url: WMS_PAITULI_BASE_URL_GWC,
+            url: URL.WMS_PAITULI_BASE_GWC,
             params: { LAYERS: currentDataUrl, VERSION: '1.1.1' },
             serverType: 'geoserver',
           }),
@@ -1856,7 +1767,7 @@ function main() {
   }
 
   const osmLayerOptions = {
-    title: translator.getVal('map.basemap'),
+    title: translate('map.basemap'),
     source: new source.TileWMS({
       url: 'http://ows.terrestris.de/osm/service?',
       attributions:
@@ -1871,11 +1782,11 @@ function main() {
   }
 
   const municipalitiesLayer = new layer.Tile({
-    title: translator.getVal('map.municipalitiesmap'),
+    title: translate('map.municipalitiesmap'),
     source: new source.TileWMS({
-      url: WMS_PAITULI_BASE_URL,
+      url: URL.WMS_PAITULI_BASE,
       params: {
-        LAYERS: LAYER_NAME_MUNICIPALITIES,
+        LAYERS: LAYER.MUNICIPALITIES_LAYER,
         SRS: 'EPSG:3067',
         VERSION: '1.1.0',
       },
@@ -1885,11 +1796,11 @@ function main() {
   })
 
   const catchmentLayer = new layer.Tile({
-    title: translator.getVal('map.catchment'),
+    title: translate('map.catchment'),
     source: new source.TileWMS({
-      url: WMS_PAITULI_BASE_URL,
+      url: URL.WMS_PAITULI_BASE,
       params: {
-        LAYERS: LAYER_NAME_CATCHMENT_AREAS,
+        LAYERS: LAYER.CATCHMENT_AREAS_LAYER,
         SRS: 'EPSG:2393',
         VERSION: '1.1.0',
       },
@@ -1932,16 +1843,12 @@ function main() {
   }
 
   function setDataAvailabiltyWarning() {
-    $('#notification-container').text(
-      translator.getVal('map.dataAvailabilityWarning')
-    )
+    $('#notification-container').text(translate('map.dataAvailabilityWarning'))
     $('#notification-container').show()
   }
 
   function createMaxResolutionWarning() {
-    $('#notification-container').text(
-      translator.getVal('map.resolutionwarning')
-    )
+    $('#notification-container').text(translate('map.resolutionwarning'))
     $('#notification-container').show()
   }
 
@@ -1986,7 +1893,7 @@ function main() {
   }
 
   function getTotalDownloadSize() {
-    const fileSize = getCurrentLayerData('file_size')
+    const fileSize = datasets.getCurrent().file_size
     return fileSize !== null
       ? Math.ceil(fileSize * selectedFeatures.getLength())
       : 0
@@ -2186,7 +2093,7 @@ function main() {
       if (keyCode == 13) {
         const searchStr = locationSearchInput.val()
         if (searchStr.length > 0) {
-          const queryUrl = NOMINATIM_API_URL.replace('!query!', searchStr)
+          const queryUrl = URL.NOMINATIM_API.replace('!query!', searchStr)
           $.getJSON(queryUrl, (data) => {
             if (data.length > 0) {
               map
@@ -2204,7 +2111,7 @@ function main() {
                 map.getView().setZoom(13)
               }
             } else {
-              alert(translator.getVal('map.locationNotFound'))
+              alert(translate('map.locationNotFound'))
             }
           })
         }
