@@ -14,7 +14,10 @@ import * as style from 'ol/style'
 import LayerSwitcher from 'ol-layerswitcher'
 import proj4 from 'proj4'
 
+import auth from '../shared/auth'
+import datasetSelect from './datasetSelect'
 import datasets from './datasets'
+import emailModal from './emailModal'
 import { translate } from '../shared/translations'
 import { LANGUAGE } from '../shared/constants'
 import { LAYER, URL } from '../shared/urls'
@@ -30,9 +33,12 @@ const MAX_DOWNLOADABLE_SIZE = 3000
 // mutable global variables
 let pageDataIdParam = getUrlParameter('data_id')
 let currentLocale = LANGUAGE.FINNISH
-let hakaUser = false
 let currentIndexMapLayer = null
 let selectedTool = ''
+
+// files selected for download
+let filePaths = []
+let fileLabels = []
 
 proj4.defs([
   [
@@ -101,7 +107,11 @@ function checkParameterDatasetAccess() {
       main()
     } else {
       const selectedData = datasets.getById(pageDataIdParam)
-      if (selectedData != null && selectedData.access == 2 && !hakaUser) {
+      if (
+        selectedData != null &&
+        selectedData.access == 2 &&
+        !auth.loggedIn()
+      ) {
         // TODO: redirect user to login page
         window.location.replace('/')
       } else {
@@ -154,215 +164,10 @@ function main() {
   const locationSearchInput = $('#location-search-input')
   let currentIndexMapLabelLayer = null
   let currentDataLayer = null
-  let currentDataUrl = null
   let currentMaxResolution = null
 
   let mapContainerId = 'map-container'
-
   let prevSelectedTab = null
-
-  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
-  const emailInput = $('#email-input')
-  const emailListInput = $('#email-list-input')
-  const licenseCheckbox = $('#license-checkbox')
-  const licenseCheckboxList = $('#license-list-checkbox')
-  const tips = $('#email-modal-tips')
-  const listTips = $('#email-list-modal-tips')
-
-  const emailModal = $('#email-modal').dialog({
-    autoOpen: false,
-    height: 'auto',
-    width: 600,
-    modal: true,
-    closeOnEscape: true,
-    draggable: true,
-    resizable: false,
-    title: translate('email.modalheader'),
-    buttons: [
-      {
-        text: translate('email.sendButton'),
-        icons: {
-          primary: 'ui-icon-mail-closed',
-        },
-        click: emailData,
-        type: 'submit',
-      },
-      {
-        text: translate('email.cancelButton'),
-        icons: {
-          primary: 'ui-icon-close',
-        },
-        click: () => $(this).dialog('close'),
-      },
-    ],
-    close: () => {
-      emailForm[0].reset()
-      emailInput.removeClass('ui-state-error')
-      licenseCheckbox.removeClass('ui-state-error')
-    },
-  })
-
-  const emailForm = emailModal.find('form')
-  emailForm.on('submit', (event) => {
-    event.preventDefault()
-    emailData()
-  })
-
-  const emailListModal = $('#email-list-modal').dialog({
-    autoOpen: false,
-    height: 'auto',
-    width: 600,
-    modal: true,
-    closeOnEscape: true,
-    draggable: true,
-    resizable: false,
-    title: translate('email.modalheaderList'),
-    buttons: [
-      {
-        text: translate('email.sendButtonList'),
-        icons: {
-          primary: 'ui-icon-mail-closed',
-        },
-        click: emailList,
-        type: 'submit',
-      },
-      {
-        text: translate('email.cancelButton'),
-        icons: {
-          primary: 'ui-icon-close',
-        },
-        click: () => emailListModal.dialog('close'),
-      },
-    ],
-    close: () => {
-      emailListForm[0].reset()
-      emailListInput.removeClass('ui-state-error')
-      licenseCheckboxList.removeClass('ui-state-error')
-    },
-  })
-
-  const emailListForm = emailListModal.find('form')
-  emailListForm.on('submit', (event) => {
-    event.preventDefault()
-    emailList()
-  })
-
-  let fileList = []
-  let fileLabelList = []
-
-  function updateModalTips(t, tipsOutput) {
-    tipsOutput.text(t).addClass('ui-state-highlight')
-    setTimeout(() => tipsOutput.removeClass('ui-state-highlight', 1500), 500)
-  }
-
-  function checkLength(obj, min, max, errMsg, tipsOutput) {
-    if (obj.val().length > max || obj.val().length < min) {
-      obj.addClass('ui-state-error')
-      updateModalTips(errMsg, tipsOutput)
-      return false
-    } else {
-      return true
-    }
-  }
-
-  function checkRegexp(obj, regexp, errMsg, tipsOutput) {
-    if (!regexp.test(obj.val())) {
-      obj.addClass('ui-state-error')
-      updateModalTips(errMsg, tipsOutput)
-      return false
-    } else {
-      return true
-    }
-  }
-
-  function checkIsChecked(obj, errMsg, tipsOutput) {
-    if (!obj.prop('checked')) {
-      obj.addClass('ui-state-error')
-      updateModalTips(errMsg, tipsOutput)
-      return false
-    } else {
-      return true
-    }
-  }
-
-  function emailDataOrList(input, dlType, license, modal, tipsOutput) {
-    const emailVal = input.val()
-    if (fileList && fileList.length > 0 && emailVal) {
-      const current = datasets.getCurrent()
-      const downloadRequest = {
-        data_id: current.data_id,
-        downloadType: dlType.toUpperCase(),
-        email: emailVal,
-        language: currentLocale,
-        filePaths: fileList,
-        filenames: fileLabelList,
-        org: current.org,
-        data: current.name,
-        scale: current.scale,
-        year: current.year,
-        coord_sys: current.coord_sys,
-        format: current.format,
-      }
-
-      // Validate input fields
-      let valid = true
-      input.removeClass('ui-state-error')
-      license.removeClass('ui-state-error')
-      valid =
-        valid &&
-        checkLength(
-          input,
-          1,
-          80,
-          translate('email.errorEmailLength'),
-          tipsOutput
-        )
-      valid =
-        valid &&
-        checkRegexp(
-          input,
-          emailRegex,
-          translate('email.errorEmailFormat'),
-          tipsOutput
-        )
-      valid =
-        valid &&
-        checkIsChecked(
-          license,
-          translate('email.errorCheckboxChecked'),
-          tipsOutput
-        )
-
-      if (valid) {
-        modal.data('email', input.val())
-        $.post({
-          url: URL.DOWNLOAD_API,
-          data: JSON.stringify(downloadRequest),
-          contentType: 'application/json; charset=utf-8',
-          dataType: 'json',
-          success: () => modal.dialog('close'),
-        })
-      }
-      return valid
-    } else {
-      console.error('No email or file paths defined!')
-      return false
-    }
-  }
-
-  function emailData() {
-    return emailDataOrList(emailInput, 'zip', licenseCheckbox, emailModal, tips)
-  }
-
-  function emailList() {
-    return emailDataOrList(
-      emailListInput,
-      'list',
-      licenseCheckboxList,
-      emailListModal,
-      listTips
-    )
-  }
 
   function setHtmlElementTextValues() {
     $('#dl-service-header h1').text(translate('appHeader'))
@@ -379,23 +184,6 @@ function main() {
     $('#metadata-container-anchor').text(translate('info.metadatatab'))
     $('#links-container-anchor').text(translate('info.linkstab'))
     locationSearchInput.attr('placeholder', translate('map.locationsearch'))
-    $('#email-input-label').text(translate('email.emailfield'))
-    $('#email-input').attr(
-      'placeholder',
-      translate('email.emailfieldPlaceholder')
-    )
-    $('#email-modal-form fieldset legend').text(translate('email.inputsheader'))
-    $('#email-instructions').text(translate('email.info'))
-
-    $('#email-list-input-label').text(translate('email.emailfield'))
-    $('#email-list-input').attr(
-      'placeholder',
-      translate('email.emailfieldPlaceholder')
-    )
-    $('#email-list-modal-form fieldset legend').text(
-      translate('email.inputsheader')
-    )
-    $('#email-list-instructions').text(translate('email.info'))
   }
 
   setHtmlElementTextValues()
@@ -679,12 +467,12 @@ function main() {
       }
 
       let i = 0
-      fileLabelList = []
+      fileLabels = []
       const dlLabelList = []
 
       selectedFeatures.forEach((feature) => {
         const label = feature.get('label')
-        fileLabelList.push(label)
+        fileLabels.push(label)
         const filePath = feature.get('path')
         i += 1
         const inputId = 'download-file-input-' + i.toString()
@@ -763,51 +551,39 @@ function main() {
         dlListButton,
         dlLicInput
       )
-      updateFileLabelListForLicence(dlLicInput, licenseUrl)
+      updateFileLabelListForLicense(dlLicInput, licenseUrl)
     })
     dlButton.on('click', (event) => {
       event.preventDefault()
       event.stopImmediatePropagation()
-      updateEmailModal()
-      $('#email-modal-tips').empty()
-      $('#email-input').val(
-        emailModal.data('email') === null ? '' : emailModal.data('email')
-      )
       if (
-        dlLicInput.prop('checked') ? fileList.length > 1 : fileList.length > 0
+        dlLicInput.prop('checked') ? filePaths.length > 1 : filePaths.length > 0
       ) {
-        emailModal.dialog('open')
+        emailModal.openDataModal(filePaths, fileLabels, getTotalDownloadSize())
       }
     })
     dlListButton.on('click', (event) => {
       event.preventDefault()
       event.stopImmediatePropagation()
-      updateEmailListModal()
-      $('#email-list-modal-tips').empty()
-      $('#email-list-input').val(
-        emailListModal.data('email') === null
-          ? ''
-          : emailListModal.data('email')
-      )
       if (
-        dlLicInput.prop('checked') ? fileList.length > 1 : fileList.length > 0
+        dlLicInput.prop('checked') ? filePaths.length > 1 : filePaths.length > 0
       ) {
-        emailListModal.dialog('open')
+        emailModal.openListModal(filePaths, fileLabels, getTotalDownloadSize())
       }
     })
     updateDownloadFileList(dlButton, dlButtonWrapper, dlListButton, dlLicInput)
-    updateFileLabelListForLicence(dlLicInput, licenseUrl)
+    updateFileLabelListForLicense(dlLicInput, licenseUrl)
   }
 
-  function updateFileLabelListForLicence(dlLicInput, licenseUrl) {
-    const licenseIdx = fileLabelList.indexOf(licenseUrl)
+  function updateFileLabelListForLicense(dlLicInput, licenseUrl) {
+    const licenseIdx = fileLabels.indexOf(licenseUrl)
     if (dlLicInput.prop('checked')) {
       if (licenseIdx == -1) {
-        fileLabelList.push(licenseUrl)
+        fileLabels.push(licenseUrl)
       }
     } else {
       if (licenseIdx > -1) {
-        fileLabelList.splice(licenseIdx, 1)
+        fileLabels.splice(licenseIdx, 1)
       }
     }
   }
@@ -818,9 +594,9 @@ function main() {
     dlListButton,
     dlLicInput
   ) {
-    fileList = []
+    filePaths = []
     const markedForDownload = $('.download-checkbox:checked')
-    markedForDownload.each((i, checkbox) => fileList.push(checkbox.value))
+    markedForDownload.each((i, checkbox) => filePaths.push(checkbox.value))
 
     updateDownloadButton(dlButton, dlButtonWrapper, dlLicInput)
     updateDownloadListButton(dlListButton, dlLicInput)
@@ -832,8 +608,8 @@ function main() {
     )
     if (
       (dlLicInput.prop('checked')
-        ? fileList.length > 1
-        : fileList.length > 0) &&
+        ? filePaths.length > 1
+        : filePaths.length > 0) &&
       getTotalDownloadSize() <= MAX_DOWNLOADABLE_SIZE
     ) {
       dlButton.prop('disabled', false)
@@ -848,7 +624,7 @@ function main() {
 
   function updateDownloadListButton(dlListButton, dlLicInput) {
     if (
-      dlLicInput.prop('checked') ? fileList.length > 1 : fileList.length > 0
+      dlLicInput.prop('checked') ? filePaths.length > 1 : filePaths.length > 0
     ) {
       dlListButton.prop('disabled', false)
     } else {
@@ -862,45 +638,6 @@ function main() {
     } else {
       selectedFeatures.remove(clickedFeature)
     }
-  }
-
-  function updateModal(dataDescription, licenseCheckboxLabel) {
-    const dataDescrContainer = $(dataDescription)
-    dataDescrContainer.empty()
-
-    const current = datasets.getCurrent()
-
-    $(licenseCheckboxLabel).html(
-      translate('email.licensefield').replace('!license!', current.license_url)
-    )
-    const dataDescrContent = $('<div>')
-    dataDescrContent.text(
-      translate('email.datasetinfo') +
-        ': ' +
-        current.org +
-        ', ' +
-        current.name +
-        ', ' +
-        current.scale +
-        ', ' +
-        current.year +
-        ', ' +
-        current.coord_sys +
-        ', ' +
-        current.format +
-        ': ' +
-        getTotalDownloadSize() +
-        ' Mb'
-    )
-    dataDescrContent.appendTo(dataDescrContainer)
-  }
-
-  function updateEmailModal() {
-    updateModal('#data-description', '#license-checkbox-label')
-  }
-
-  function updateEmailListModal() {
-    updateModal('#data-description-list', '#license-list-checkbox-label')
   }
 
   function clearFeatureInfoTabContent() {
@@ -950,419 +687,6 @@ function main() {
   function clearSearchResults() {
     $('#feature-search-field').val('')
     $('#feature-search-results').empty()
-  }
-
-  function initFormInputs(formRootElemId) {
-    const producerInputId = 'producer-input'
-    const dataInputId = 'data-input'
-    const scaleInputId = 'scale-input'
-    const yearInputId = 'year-input'
-    const formatInputId = 'format-input'
-    const coordsysInputId = 'coordsys-input'
-    const rootElem = $('#' + formRootElemId)
-
-    const producerInputRow = $('<article>', {
-      class: 'form-input-row',
-      id: 'producer-row',
-    })
-    const producerLabel = $('<div>', {
-      class: 'form-input-label',
-      id: 'producer-label',
-    })
-    producerLabel.append(translate('data.producer'))
-
-    const producerInput = $('<select>', {
-      class: 'form-input',
-      id: producerInputId,
-    })
-    producerLabel.appendTo(producerInputRow)
-    producerInput.appendTo(producerInputRow)
-
-    const dataInputRow = $('<article>', {
-      class: 'form-input-row',
-      id: 'data-row',
-    })
-    const dataLabel = $('<div>', {
-      class: 'form-input-label',
-      id: 'data-label',
-    })
-    dataLabel.append(translate('data.data'))
-
-    const dataInput = $('<select>', {
-      class: 'form-input',
-      id: dataInputId,
-    })
-    dataLabel.appendTo(dataInputRow)
-    dataInput.appendTo(dataInputRow)
-
-    const scaleInputRow = $('<article>', {
-      class: 'form-input-row',
-      id: 'scale-row',
-    })
-    const scaleLabel = $('<div>', {
-      class: 'form-input-label',
-      id: 'scale-label',
-    })
-    scaleLabel.append(translate('data.scale'))
-    const scaleInput = $('<select>', {
-      class: 'form-input',
-      id: scaleInputId,
-    })
-    scaleLabel.appendTo(scaleInputRow)
-    scaleInput.appendTo(scaleInputRow)
-
-    const yearInputRow = $('<article>', {
-      class: 'form-input-row',
-      id: 'year-row',
-    })
-    const yearLabel = $('<div>', {
-      class: 'form-input-label',
-      id: 'year-label',
-    })
-    yearLabel.append(translate('data.year'))
-    const yearInput = $('<select>', {
-      class: 'form-input',
-      id: yearInputId,
-    })
-    yearLabel.appendTo(yearInputRow)
-    yearInput.appendTo(yearInputRow)
-
-    const formatInputRow = $('<article>', {
-      class: 'form-input-row',
-      id: 'format-row',
-    })
-    const formatLabel = $('<div>', {
-      class: 'form-input-label',
-      id: 'format-label',
-    })
-    formatLabel.append(translate('data.format'))
-    const formatInput = $('<select>', {
-      class: 'form-input',
-      id: formatInputId,
-    })
-    formatLabel.appendTo(formatInputRow)
-    formatInput.appendTo(formatInputRow)
-
-    const coordsysInputRow = $('<article>', {
-      class: 'form-input-row',
-      id: 'coordsys-row',
-    })
-    const coordsysLabel = $('<div>', {
-      class: 'form-input-label',
-      id: 'coordsys-label',
-    })
-    coordsysLabel.append(translate('data.coordSys'))
-    const coordsysInput = $('<select>', {
-      class: 'form-input',
-      id: coordsysInputId,
-    })
-    coordsysLabel.appendTo(coordsysInputRow)
-    coordsysInput.appendTo(coordsysInputRow)
-
-    producerInputRow.appendTo(rootElem)
-    dataInputRow.appendTo(rootElem)
-    scaleInputRow.appendTo(rootElem)
-    yearInputRow.appendTo(rootElem)
-    formatInputRow.appendTo(rootElem)
-    coordsysInputRow.appendTo(rootElem)
-
-    $('#' + producerInputId).on('change', () =>
-      updateDataList(producerInput, dataInput)
-    )
-    $('#' + dataInputId).on('change', () =>
-      updateScaleList(producerInput, dataInput, scaleInput)
-    )
-    $('#' + scaleInputId).on('change', () =>
-      updateYearList(producerInput, dataInput, scaleInput, yearInput)
-    )
-    $('#' + yearInputId).on('change', () =>
-      updateFormatList(
-        producerInput,
-        dataInput,
-        scaleInput,
-        yearInput,
-        formatInput
-      )
-    )
-    $('#' + formatInputId).on('change', () =>
-      updateCoordsysList(
-        producerInput,
-        dataInput,
-        scaleInput,
-        yearInput,
-        formatInput,
-        coordsysInput
-      )
-    )
-    $('#' + coordsysInputId).on('change', () => {
-      const selectedData = datasets
-        .getAll()
-        .find(
-          (data) =>
-            data.org === producerInput.val() &&
-            data.name === dataInput.val() &&
-            data.scale === scaleInput.val() &&
-            data.year === yearInput.val() &&
-            data.format === formatInput.val() &&
-            data.coord_sys === coordsysInput.val()
-        )
-
-      if (typeof selectedData !== 'undefined') {
-        datasets.setCurrent(selectedData.data_id)
-        const dataUrl = datasets.getCurrent().data_url
-        if (dataUrl !== null) {
-          currentDataUrl = dataUrl
-        } else {
-          currentDataUrl = null
-        }
-      } else {
-        datasets.clearCurrent()
-      }
-      updateMap()
-    })
-
-    updateProducerList(producerInput)
-
-    if (pageDataIdParam !== null) {
-      setDataIdVars(
-        producerInput,
-        dataInput,
-        scaleInput,
-        yearInput,
-        formatInput,
-        coordsysInput
-      )
-    }
-  }
-
-  function setDataIdVars(
-    producerInput,
-    dataInput,
-    scaleInput,
-    yearInput,
-    formatInput,
-    coordsysInput
-  ) {
-    const selectedData = datasets.getById(pageDataIdParam)
-    if (typeof selectedData !== 'undefined') {
-      producerInput.val(selectedData.org)
-      producerInput.trigger('change')
-      dataInput.val(selectedData.name)
-      dataInput.trigger('change')
-      scaleInput.val(selectedData.scale)
-      scaleInput.trigger('change')
-      yearInput.val(selectedData.year)
-      yearInput.trigger('change')
-      formatInput.val(selectedData.format)
-      formatInput.trigger('change')
-      coordsysInput.val(selectedData.coord_sys)
-      coordsysInput.trigger('change')
-    }
-    pageDataIdParam = null
-  }
-
-  function onlyDistinct(value, index, self) {
-    return self.indexOf(value) === index
-  }
-
-  function onlyAuthorized(data) {
-    return hakaUser || data.access === 1
-  }
-
-  function updateProducerList(producerInput) {
-    const producers = datasets
-      .getAll()
-      .filter(onlyAuthorized)
-      .map((data) => data.org)
-      .filter(onlyDistinct)
-    updateOptions(producerInput, sortDropdownData('ascending', producers), true)
-  }
-
-  function updateDataList(producerInput, dataInput) {
-    if (!producerInput.val().startsWith('--')) {
-      const names = datasets
-        .getAll()
-        .filter((data) => data.org === producerInput.val())
-        .filter(onlyAuthorized)
-        .map((data) => data.name)
-        .filter(onlyDistinct)
-      updateOptions(dataInput, sortDropdownData('ascending', names), false)
-    } else {
-      addEmptyOption(dataInput)
-    }
-  }
-
-  function updateScaleList(producerInput, dataInput, scaleInput) {
-    if (!dataInput.val().startsWith('--')) {
-      const scales = datasets
-        .getAll()
-        .filter((data) => data.org === producerInput.val())
-        .filter((data) => data.name === dataInput.val())
-        .map((data) => data.scale)
-        .filter(onlyDistinct)
-      updateOptions(scaleInput, sortDropdownData('shortest', scales), false)
-    } else {
-      addEmptyOption(scaleInput)
-    }
-  }
-
-  function updateYearList(producerInput, dataInput, scaleInput, yearInput) {
-    if (!scaleInput.val().startsWith('--')) {
-      const years = datasets
-        .getAll()
-        .filter((data) => data.org === producerInput.val())
-        .filter((data) => data.name === dataInput.val())
-        .filter((data) => data.scale === scaleInput.val())
-        .map((data) => data.year)
-        .filter(onlyDistinct)
-      updateOptions(yearInput, sortDropdownData('newest', years), false)
-    } else {
-      addEmptyOption(yearInput)
-    }
-  }
-
-  function updateFormatList(
-    producerInput,
-    dataInput,
-    scaleInput,
-    yearInput,
-    formatInput
-  ) {
-    if (!yearInput.val().startsWith('--')) {
-      const formats = datasets
-        .getAll()
-        .filter((data) => data.org === producerInput.val())
-        .filter((data) => data.name === dataInput.val())
-        .filter((data) => data.scale === scaleInput.val())
-        .filter((data) => data.year === yearInput.val())
-        .map((data) => data.format)
-        .filter(onlyDistinct)
-      updateOptions(formatInput, sortDropdownData('ascending', formats), false)
-    } else {
-      addEmptyOption(formatInput)
-    }
-  }
-
-  function updateCoordsysList(
-    producerInput,
-    dataInput,
-    scaleInput,
-    yearInput,
-    formatInput,
-    coordsysInput
-  ) {
-    if (!formatInput.val().startsWith('--')) {
-      const coordsyses = datasets
-        .getAll()
-        .filter((data) => data.org === producerInput.val())
-        .filter((data) => data.name === dataInput.val())
-        .filter((data) => data.scale === scaleInput.val())
-        .filter((data) => data.year === yearInput.val())
-        .filter((data) => data.format === formatInput.val())
-        .map((data) => data.coord_sys)
-        .filter(onlyDistinct)
-      updateOptions(
-        coordsysInput,
-        sortDropdownData('ascending', coordsyses),
-        false
-      )
-    } else {
-      addEmptyOption(coordsysInput)
-    }
-  }
-
-  function addEmptyOption(inputElem) {
-    inputElem.empty()
-    const title = '--'
-    const optionElem = $('<option>', {
-      value: title,
-    })
-    optionElem.text(title)
-    inputElem.append(optionElem)
-    inputElem.prop('disabled', true)
-    inputElem
-      .val($('#' + inputElem.attr('id') + ' option:first').val())
-      .change()
-  }
-
-  function updateOptions(inputElem, optionNames, isProducerInput, optionIds) {
-    if (optionIds === undefined) {
-      optionIds = null
-    }
-    inputElem.empty()
-    inputElem.prop('disabled', false)
-    if (isProducerInput) {
-      let title = translate('data.selectProducer')
-      const optionElem = $('<option>', {
-        value: title,
-      })
-      optionElem.text(title)
-      inputElem.append(optionElem)
-    }
-    $.each(optionNames, (idx, value) => {
-      const optionElem = $('<option>', {
-        value: value,
-      })
-      optionElem.text(value)
-      if (optionIds !== null) {
-        optionElem.attr('id', optionIds[idx])
-      }
-      inputElem.append(optionElem)
-    })
-
-    if (inputElem.find('option').length <= 1) {
-      inputElem.prop('disabled', true)
-    }
-
-    inputElem
-      .val($('#' + inputElem.attr('id') + ' option:first').val())
-      .change()
-  }
-
-  function sortDropdownData(type, data) {
-    switch (type) {
-      case 'ascending':
-        data.sort()
-        break
-      case 'newest': // Used for dates
-        data.sort((a, b) => {
-          const c = fixDropDownItemForOrdering(a)
-          const d = fixDropDownItemForOrdering(b)
-          return d - c
-        })
-        break
-
-      case 'shortest':
-        // Used for scales
-        // The scales are basicallly ordered in numeric order from smaller
-        // to bigger.
-
-        data.sort((a, b) => {
-          const c = fixDropDownItemForOrdering(a)
-          const d = fixDropDownItemForOrdering(b)
-          return c - d
-        })
-        break
-      default:
-        return null
-    }
-    return data
-  }
-
-  function fixDropDownItemForOrdering(label) {
-    let d
-    // Split is for cases like: 1:10 000, 25mx25m, "1:20 000, 1:50 000",
-    // 2015-2017.
-    // Count only with the last number.
-    if (label.search(/[?,:.xX-]+/) != -1) {
-      let parts = label.split(/[?,:.xX-]+/g)
-      d = parts[parts.length - 1]
-    } else {
-      d = label
-    }
-    // Remove anything non-numeric
-    d = d.replace(/\D/g, '')
-    return d
   }
 
   function createMetadataTabContent() {
@@ -1718,13 +1042,14 @@ function main() {
   }
 
   function loadDataLayer() {
-    if (datasets.hasCurrent() && currentDataUrl != null) {
-      if (currentDataUrl.indexOf('protected') > -1) {
+    if (datasets.hasCurrent() && datasets.getCurrent().data_url != null) {
+      const dataUrl = datasets.getCurrent().data_url
+      if (dataUrl.indexOf('protected') > -1) {
         currentDataLayer = new layer.Image({
           title: translate('map.datamap'),
           source: new source.ImageWMS({
             url: URL.WMS_PAITULI_BASE,
-            params: { LAYERS: currentDataUrl, VERSION: '1.1.1' },
+            params: { LAYERS: dataUrl, VERSION: '1.1.1' },
             serverType: 'geoserver',
           }),
           visible: true,
@@ -1734,7 +1059,7 @@ function main() {
           title: translate('map.datamap'),
           source: new source.TileWMS({
             url: URL.WMS_PAITULI_BASE_GWC,
-            params: { LAYERS: currentDataUrl, VERSION: '1.1.1' },
+            params: { LAYERS: dataUrl, VERSION: '1.1.1' },
             serverType: 'geoserver',
           }),
           visible: true,
@@ -1875,13 +1200,13 @@ function main() {
   const selectedFeatures = featureSelectInteraction.getFeatures()
 
   selectedFeatures.on('add', (event) => {
-    fileLabelList.push(event.element.get('label'))
+    fileLabels.push(event.element.get('label'))
   })
 
   selectedFeatures.on('remove', (event) => {
-    const deleteIdx = fileLabelList.indexOf(event.element.get('label'))
+    const deleteIdx = fileLabels.indexOf(event.element.get('label'))
     if (deleteIdx > -1) {
-      fileLabelList.splice(deleteIdx, 1)
+      fileLabels.splice(deleteIdx, 1)
     }
   })
 
@@ -2132,7 +1457,7 @@ function main() {
   map.addControl(layerSwitcher)
   map.addControl(scaleLineControl)
 
-  initFormInputs('form-input-container')
+  datasetSelect.init(updateMap, pageDataIdParam)
   initLocationSearch()
   createSearchField()
 
