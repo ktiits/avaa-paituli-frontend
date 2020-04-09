@@ -15,11 +15,16 @@ import LayerSwitcher from 'ol-layerswitcher'
 import proj4 from 'proj4'
 
 import auth from '../shared/auth'
-import datasetSelect from './datasetSelect'
+import datasetSelect from './components/datasetSelect'
+import globals from './globals'
 import datasets from './datasets'
-import emailModal from './emailModal'
-import { translate } from '../shared/translations'
-import { LANGUAGE } from '../shared/constants'
+import locationSearch from './components/locationSearch'
+import downloadTab from './components/downloadTab'
+import featureInfoTab from './components/featureInfoTab'
+import metadataTab from './components/metadataTab'
+import linksTab from './components/linksTab'
+import { changeLocale, translate } from '../shared/translations'
+import { LOCALE } from '../shared/constants'
 import { LAYER, URL } from '../shared/urls'
 
 import 'bootstrap/dist/css/bootstrap.min.css'
@@ -28,17 +33,11 @@ import 'ol/ol.css'
 import 'ol-layerswitcher/src/ol-layerswitcher.css'
 import '../css/download.css'
 
-const MAX_DOWNLOADABLE_SIZE = 3000
-
 // mutable global variables
 let pageDataIdParam = getUrlParameter('data_id')
-let currentLocale = LANGUAGE.FINNISH
-let currentIndexMapLayer = null
 let selectedTool = ''
 
-// files selected for download
-let filePaths = []
-let fileLabels = []
+changeLocale(LOCALE.FINNISH)
 
 proj4.defs([
   [
@@ -121,7 +120,25 @@ function checkParameterDatasetAccess() {
   })
 }
 
+function setTranslations() {
+  $('#dl-service-header h1').text(translate('appHeader'))
+  $('#data-form legend').text(translate('data.header'))
+  $('#resetview-button').attr('title', translate('map.reset'))
+  $('#clearselection-button').attr('title', translate('map.clearSelection'))
+  $('#panselection-button').attr('title', translate('map.pan'))
+  $('#selectselection-button').attr('title', translate('map.select'))
+  $('#infoselection-button').attr('title', translate('map.info'))
+  $('#drawselection-button').attr('title', translate('map.draw'))
+
+  $('#download-container-anchor').text(translate('info.downloadtab'))
+  $('#feature-info-container-anchor').text(translate('info.featureinfotab'))
+  $('#metadata-container-anchor').text(translate('info.metadatatab'))
+  $('#links-container-anchor').text(translate('info.linkstab'))
+}
+
 function main() {
+  setTranslations()
+
   $(document).tooltip({ track: true })
 
   const selected_style = new style.Style({
@@ -149,7 +166,6 @@ function main() {
       color: [255, 255, 255, 0.8],
     }),
   })
-
   const panSelectBtn = $('#panselection-button')
   const selectSelectContainer = $('#selectselection-container')
   const clearSelectContainer = $('#clearselection-container')
@@ -159,44 +175,16 @@ function main() {
   selectSelectContainer.hide()
   clearSelectContainer.hide()
   infoSelectContainer.hide()
-  drawSelectContainer.hide()
 
-  const locationSearchInput = $('#location-search-input')
+  drawSelectContainer.hide()
   let currentIndexMapLabelLayer = null
   let currentDataLayer = null
   let currentMaxResolution = null
-
   let mapContainerId = 'map-container'
   let prevSelectedTab = null
 
-  function setHtmlElementTextValues() {
-    $('#dl-service-header h1').text(translate('appHeader'))
-    $('#data-form legend').text(translate('data.header'))
-    $('#resetview-button').attr('title', translate('map.reset'))
-    $('#clearselection-button').attr('title', translate('map.clearSelection'))
-    $('#panselection-button').attr('title', translate('map.pan'))
-    $('#selectselection-button').attr('title', translate('map.select'))
-    $('#infoselection-button').attr('title', translate('map.info'))
-    $('#drawselection-button').attr('title', translate('map.draw'))
-
-    $('#download-container-anchor').text(translate('info.downloadtab'))
-    $('#feature-info-container-anchor').text(translate('info.featureinfotab'))
-    $('#metadata-container-anchor').text(translate('info.metadatatab'))
-    $('#links-container-anchor').text(translate('info.linkstab'))
-    locationSearchInput.attr('placeholder', translate('map.locationsearch'))
-  }
-
-  setHtmlElementTextValues()
   const tabContainerId = 'info-container'
   const tabContainer = $('#' + tabContainerId)
-  const downloadTabContentRootId = 'download-container'
-  const downloadTabContentRoot = $('#' + downloadTabContentRootId)
-  const featureInfoTabContentRootId = 'feature-info-container'
-  const featureInfoTabContentRoot = $('#' + featureInfoTabContentRootId)
-  const metadataTabContentRootId = 'metadata-container'
-  const metadataTabContentRoot = $('#' + metadataTabContentRootId)
-  const linksTabContentRootId = 'links-container'
-  const linksTabContentRoot = $('#' + linksTabContentRootId)
   tabContainer.tabs({
     activate: (event, ui) => (prevSelectedTab = ui.newPanel.get(0).id),
   })
@@ -204,16 +192,14 @@ function main() {
   function setInfoContent(contentType, params) {
     switch (contentType) {
       case 'download':
-        createDownloadContent(downloadTabContentRoot)
+        downloadTab.init(highlightOverlay)
         break
       case 'featureinfo':
-        clearFeatureInfoTabContent()
-        createFeatureInfoContent(featureInfoTabContentRoot, params)
+        featureInfoTab.init(params, view, currentDataLayer)
         break
       case 'metadata':
-        clearMetadataTabContent()
-        createMetadataTabContent()
-        createLinksContent(linksTabContentRoot)
+        metadataTab.init()
+        linksTab.init()
         break
       default:
         break
@@ -258,403 +244,12 @@ function main() {
       clearMapFeatureSelection()
       clearSearchResults()
       const features = getSearchResultFeatures(searchStr)
-      selectedFeatures.extend(features)
+      globals.getSelectedFeatures().extend(features)
       $('#feature-search-results').text(
         translate('data.searchresult').replace('!features!', features.length)
       )
     }
     return false
-  }
-
-  function createFeatureInfoContent(rootElem, event) {
-    const viewResolution = view.getResolution()
-    const url = currentDataLayer
-      .getSource()
-      .getFeatureInfoUrl(event.coordinate, viewResolution, 'EPSG:3857', {
-        INFO_FORMAT: 'text/plain',
-        outputFormat: 'text/javascript',
-      })
-    if (url) {
-      rootElem.html(
-        '<iframe id="feature-info-iframe" seamless src="' + url + '"></iframe>'
-      )
-    }
-  }
-
-  function addLink(linkName, hrefValue, container) {
-    let anchor = $('#' + linkName + '-anchor')
-    if (!anchor.length) {
-      anchor = $('<a>', {
-        id: 'dataset-link-anchor',
-        href: hrefValue,
-        target: '_blank',
-      })
-    }
-    container.append('<strong>' + linkName + ': </strong>')
-    anchor.text(hrefValue)
-    anchor.appendTo(container)
-    container.append('<br>')
-  }
-
-  function createParagraph(id, text) {
-    let p = $(id)
-    if (!p.length) {
-      p = $('<p>', {
-        id: id,
-      })
-    }
-    p.text(text)
-    return p
-  }
-
-  function createLinksContent(rootElem) {
-    rootElem.empty()
-    const infoText = createParagraph(
-      '#links-info',
-      translate('info.linksIntro')
-    )
-    infoText.appendTo(rootElem)
-
-    const datasetPath = datasets.getCurrent().funet
-    const rsyncPath =
-      'rsync://rsync.nic.funet.fi/ftp/index/geodata/' + datasetPath
-
-    const linksContainer = $('<div>', {
-      id: 'links-container',
-    })
-
-    const ftpPath = URL.FTP_LINKS_BASE + datasetPath
-    const httpPath = URL.HTTP_LINKS_BASE + datasetPath
-
-    addLink('http', httpPath, linksContainer)
-    addLink('ftp', ftpPath, linksContainer)
-    linksContainer.append('<strong>rsync: </strong>' + rsyncPath)
-    linksContainer.appendTo(rootElem)
-
-    const url = URL.WFS_INDEX_MAP_DOWNLOAD_SHAPE.replace(
-      '!key!',
-      'data_id'
-    ).replace('!value!', datasets.getCurrent().data_id)
-
-    let index_anchor = $('#index-anchor')
-    if (!index_anchor.length) {
-      index_anchor = $('<a>', {
-        id: 'index-anchor',
-        href: url,
-        target: '_blank',
-      })
-    }
-    index_anchor.text(translate('info.downloadindex') + ' ')
-
-    $('<br>').appendTo(rootElem)
-    rootElem.append(index_anchor)
-    rootElem.append(translate('info.dlIndexMapInfo') + ' ')
-    rootElem.append(
-      translate('info.linksInfo').replace('!infolink!', URL.INFO_LINK)
-    )
-  }
-
-  function createDownloadContent(rootElem) {
-    // Download and download list buttons are inside wrappers so that
-    // tooltips can be attached to wrappers instead of buttons. This way
-    // tooltips retain constant style even when buttons are disabled.
-    highlightOverlay.getSource().clear()
-
-    let dlButtonWrapper = $('#dl-button-wrapper')
-    if (!dlButtonWrapper.length) {
-      dlButtonWrapper = $('<a>', { id: 'dl-button-wrapper' })
-    }
-    let dlButton = $('#download-button')
-    if (!dlButton.length) {
-      dlButton = $('<button>', {
-        class: 'btn btn-default',
-        id: 'download-button',
-      })
-    }
-    dlButton.text(
-      translate('info.download') + ': ~' + getTotalDownloadSize() + ' Mb'
-    )
-    dlButton.appendTo(dlButtonWrapper)
-
-    let dlListWrapper = $('#dl-list-wrapper')
-    if (!dlListWrapper.length) {
-      dlListWrapper = $('<a>', {
-        id: 'dl-list-wrapper',
-        title: translate('info.dlListTooltip'),
-      })
-    }
-    let dlListButton = $('#download-list-button')
-    if (!dlListButton.length) {
-      dlListButton = $('<button>', {
-        class: 'btn btn-default',
-        id: 'download-list-button',
-      })
-    }
-    dlListButton.text(translate('info.downloadlist'))
-    dlListButton.appendTo(dlListWrapper)
-
-    // Hide files list download option, if HAKA-dataset, these are not in FTP.
-    const dataAccess = datasets.getCurrent().access
-    if (dataAccess == 1) {
-      dlListButton.css('visibility', 'visible')
-    } else {
-      dlListButton.css('visibility', 'hidden')
-    }
-
-    let licenseHeader = $('#download-license-header')
-    if (!licenseHeader.length) {
-      licenseHeader = $('<h5>', {
-        id: 'download-license-header',
-        class: 'download-tab-header',
-      })
-    }
-    licenseHeader.text(translate('info.documents'))
-
-    //http://www.nic.funet.fi/index/geodata/mml/NLS_terms_of_use.pdf -> crop after geodata/
-    const licenseUrl = datasets.getCurrent().license_url
-    const dlLicInputId = 'download-license-input'
-    let dlLicContainer = $('#download-license-container')
-    let dlLicInput = $('#' + dlLicInputId)
-    let dlLicLabelLink = $('#download-license-link')
-    if (!dlLicInput.length) {
-      dlLicContainer = $('<div>', {
-        id: 'download-license-container',
-      })
-      dlLicLabelLink = $('<a>', {
-        id: 'download-license-link',
-        href: licenseUrl,
-        target: '_blank',
-        class: 'download-license-link',
-        'data-value': translate('info.license'),
-      })
-      dlLicLabelLink.text(translate('info.license'))
-      dlLicInput = $('<input>', {
-        checked: 'checked',
-        id: dlLicInputId,
-        type: 'checkbox',
-        value: cutLicenseURL(licenseUrl),
-        class: 'download-checkbox',
-      })
-      dlLicInput.appendTo(dlLicContainer)
-      dlLicLabelLink.appendTo(dlLicContainer)
-    }
-
-    const downloadFilesHeader = $('<h5>', {
-      id: 'download-file-header',
-      class: 'download-tab-header',
-    })
-    downloadFilesHeader.text(translate('info.files'))
-
-    if (selectedFeatures.getLength() > 0) {
-      let dataListContainerElem = $('#data-download-list')
-      if (!dataListContainerElem.length) {
-        clearDownloadTabContent()
-        dlButtonWrapper.appendTo(rootElem)
-        dlListWrapper.appendTo(rootElem)
-        licenseHeader.appendTo(rootElem)
-
-        dlLicContainer.appendTo(rootElem)
-
-        downloadFilesHeader.appendTo(rootElem)
-      }
-
-      if (!dataListContainerElem.length) {
-        dataListContainerElem = $('<div>', {
-          id: 'data-download-list',
-        })
-      } else {
-        dataListContainerElem.empty()
-      }
-
-      let i = 0
-      fileLabels = []
-      const dlLabelList = []
-
-      selectedFeatures.forEach((feature) => {
-        const label = feature.get('label')
-        fileLabels.push(label)
-        const filePath = feature.get('path')
-        i += 1
-        const inputId = 'download-file-input-' + i.toString()
-        const dlLabel = $('<label>', {
-          for: inputId,
-          class: 'download-label',
-          'data-value': label,
-          ol_id: feature.getId(),
-        })
-        const dlInput = $('<input>', {
-          checked: 'checked',
-          id: inputId,
-          type: 'checkbox',
-          value: filePath,
-          class: 'download-checkbox',
-          ol_id: feature.getId(),
-        })
-        dlInput.on('change', () => {
-          updateSelectedFeatures(feature, dlInput)
-          updateDownloadFileList(
-            dlButton,
-            dlButtonWrapper,
-            dlListButton,
-            dlLicInput
-          )
-        })
-        dlLabel.hover(
-          (event) => {
-            highlightOverlay.getSource().clear()
-            const olId = currentIndexMapLayer
-              .getSource()
-              .getFeatureById($(event.target).attr('ol_id'))
-            highlightOverlay.getSource().addFeature(olId)
-            dlLabel.css('font-weight', 'Bold')
-          },
-          (event) => {
-            const olId = currentIndexMapLayer
-              .getSource()
-              .getFeatureById($(event.target).attr('ol_id'))
-            highlightOverlay.getSource().removeFeature(olId)
-            dlLabel.css('font-weight', 'normal')
-          }
-        )
-        dlLabel.append(dlInput)
-        dlLabel.append(label)
-        dlLabelList.push(dlLabel)
-      })
-      dlLabelList.sort((a, b) => {
-        if (a.attr('data-value') >= b.attr('data-value')) {
-          return 1
-        } else {
-          return -1
-        }
-      })
-      $.each(dlLabelList, (idx, val) => val.appendTo(dataListContainerElem))
-      if (i > 0) {
-        dataListContainerElem.appendTo(rootElem)
-      }
-    } else {
-      clearDownloadTabContent()
-      dlButtonWrapper.appendTo(rootElem)
-      dlListWrapper.appendTo(rootElem)
-      licenseHeader.appendTo(rootElem)
-      dlLicContainer.appendTo(rootElem)
-      downloadFilesHeader.appendTo(rootElem)
-      const downloadInfo = $('<div>', {
-        id: 'download-info-container',
-      })
-      downloadInfo.text(translate('info.info'))
-      downloadInfo.appendTo(rootElem)
-    }
-    dlLicInput.on('change', () => {
-      updateDownloadFileList(
-        dlButton,
-        dlButtonWrapper,
-        dlListButton,
-        dlLicInput
-      )
-      updateFileLabelListForLicense(dlLicInput, licenseUrl)
-    })
-    dlButton.on('click', (event) => {
-      event.preventDefault()
-      event.stopImmediatePropagation()
-      if (
-        dlLicInput.prop('checked') ? filePaths.length > 1 : filePaths.length > 0
-      ) {
-        emailModal.openDataModal(filePaths, fileLabels, getTotalDownloadSize())
-      }
-    })
-    dlListButton.on('click', (event) => {
-      event.preventDefault()
-      event.stopImmediatePropagation()
-      if (
-        dlLicInput.prop('checked') ? filePaths.length > 1 : filePaths.length > 0
-      ) {
-        emailModal.openListModal(filePaths, fileLabels, getTotalDownloadSize())
-      }
-    })
-    updateDownloadFileList(dlButton, dlButtonWrapper, dlListButton, dlLicInput)
-    updateFileLabelListForLicense(dlLicInput, licenseUrl)
-  }
-
-  function updateFileLabelListForLicense(dlLicInput, licenseUrl) {
-    const licenseIdx = fileLabels.indexOf(licenseUrl)
-    if (dlLicInput.prop('checked')) {
-      if (licenseIdx == -1) {
-        fileLabels.push(licenseUrl)
-      }
-    } else {
-      if (licenseIdx > -1) {
-        fileLabels.splice(licenseIdx, 1)
-      }
-    }
-  }
-
-  function updateDownloadFileList(
-    dlButton,
-    dlButtonWrapper,
-    dlListButton,
-    dlLicInput
-  ) {
-    filePaths = []
-    const markedForDownload = $('.download-checkbox:checked')
-    markedForDownload.each((i, checkbox) => filePaths.push(checkbox.value))
-
-    updateDownloadButton(dlButton, dlButtonWrapper, dlLicInput)
-    updateDownloadListButton(dlListButton, dlLicInput)
-  }
-
-  function updateDownloadButton(dlButton, dlButtonWrapper, dlLicInput) {
-    dlButton.text(
-      translate('info.download') + ': ~' + getTotalDownloadSize() + ' Mb'
-    )
-    if (
-      (dlLicInput.prop('checked')
-        ? filePaths.length > 1
-        : filePaths.length > 0) &&
-      getTotalDownloadSize() <= MAX_DOWNLOADABLE_SIZE
-    ) {
-      dlButton.prop('disabled', false)
-      dlButtonWrapper.removeAttr('title')
-    } else {
-      if (getTotalDownloadSize() > MAX_DOWNLOADABLE_SIZE) {
-        dlButtonWrapper.attr('title', translate('info.downloadTooltip'))
-      }
-      dlButton.prop('disabled', true)
-    }
-  }
-
-  function updateDownloadListButton(dlListButton, dlLicInput) {
-    if (
-      dlLicInput.prop('checked') ? filePaths.length > 1 : filePaths.length > 0
-    ) {
-      dlListButton.prop('disabled', false)
-    } else {
-      dlListButton.prop('disabled', true)
-    }
-  }
-
-  function updateSelectedFeatures(clickedFeature, dlInput) {
-    if (dlInput.is(':checked')) {
-      selectedFeatures.push(clickedFeature)
-    } else {
-      selectedFeatures.remove(clickedFeature)
-    }
-  }
-
-  function clearFeatureInfoTabContent() {
-    featureInfoTabContentRoot.empty()
-  }
-
-  function clearDownloadTabContent() {
-    downloadTabContentRoot.empty()
-  }
-
-  function clearMetadataTabContent() {
-    metadataTabContentRoot.empty()
-  }
-
-  function clearInfoBoxTabs() {
-    clearDownloadTabContent()
-    clearFeatureInfoTabContent()
   }
 
   function selectTab(tabIndex) {
@@ -663,20 +258,19 @@ function main() {
 
   function selectTabAfterDatasetChange(hasInfoTab) {
     if (prevSelectedTab == null) {
-      prevSelectedTab = downloadTabContentRootId
+      prevSelectedTab = downloadTab.TAB_ID
     }
-
     let newTabId = null
-    if (prevSelectedTab == downloadTabContentRootId) {
-      newTabId = downloadTabContentRootId
-    } else if (prevSelectedTab == featureInfoTabContentRootId) {
+    if (prevSelectedTab == downloadTab.TAB_ID) {
+      newTabId = downloadTab.TAB_ID
+    } else if (prevSelectedTab == featureInfoTab.TAB_ID) {
       if (hasInfoTab) {
-        newTabId = featureInfoTabContentRootId
+        newTabId = featureInfoTab.TAB_ID
       } else {
-        newTabId = downloadTabContentRootId
+        newTabId = downloadTab.TAB_ID
       }
-    } else if (prevSelectedTab == metadataTabContentRootId) {
-      newTabId = metadataTabContentRootId
+    } else if (prevSelectedTab == metadataTab.TAB_ID) {
+      newTabId = metadataTab.TAB_ID
     }
     const index = $('#' + tabContainerId + ' a[href="#' + newTabId + '"]')
       .parent()
@@ -689,232 +283,52 @@ function main() {
     $('#feature-search-results').empty()
   }
 
-  function createMetadataTabContent() {
-    const metadataURN = datasets.getCurrent().meta
-    const metadataInfoLabel = $('<div>', {
-      id: 'metadata-info-label',
-    })
-    if (metadataURN !== null) {
-      metadataInfoLabel.append(
-        translate('info.metadatainfo').replace(
-          '!metadata_url!',
-          URL.ETSIN_METADATA_BASE + flipURN(metadataURN)
-        )
-      )
-      metadataTabContentRoot.append(metadataInfoLabel)
-    }
-
-    const errorFunction = (metadataNotes) => {
-      metadataNotes.html(translate('info.nometadataavailable'))
-      metadataTabContentRoot.append(metadataNotes)
-    }
-
-    const successFunction = (rawEtsinMetadata, metadataNotes) => {
-      const notesHtml = getNotesAsHtmlFromEtsinMetadata(rawEtsinMetadata)
-      const linksHtml = getLinksAsHtmlFromEtsinMetadata(rawEtsinMetadata)
-      if (rawEtsinMetadata == null || notesHtml == null) {
-        metadataNotes.html(translate('info.nometadataavailable'))
-      } else {
-        metadataNotes.html(
-          translate('info.metadatacontentheader') + notesHtml + linksHtml
-        )
-      }
-      if (metadataTabContentRoot.children().length >= 2) {
-        metadataTabContentRoot.children().last().remove()
-      }
-      metadataTabContentRoot.append(metadataNotes)
-    }
-
-    const metadataNotes = $('<div>', {
-      id: 'metadata-notes',
-    })
-
-    fetchMetadataDescription(
-      metadataURN,
-      metadataNotes,
-      successFunction,
-      errorFunction
-    )
-  }
-
-  // Get dataset's metadata file links from Metax
-  function getLinksAsHtmlFromEtsinMetadata(rawEtsinMetadata) {
-    if (rawEtsinMetadata != null) {
-      const hasFileLink = (metadata) =>
-        metadata.title != null &&
-        metadata.download_url.identifier
-          .toLowerCase()
-          .includes('latauspalvelu') === false
-      const toHtmlLink = (metadata) =>
-        '<li><a href="' +
-        metadata.download_url.identifier +
-        '" target="_blank">' +
-        metadata.title +
-        '</a></li>'
-      const htmlLinks = rawEtsinMetadata.research_dataset.remote_resources
-        .filter(hasFileLink)
-        .map(toHtmlLink)
-
-      if (htmlLinks.length > 0) {
-        return (
-          '<br>' +
-          translate('info.metadatalinksheader') +
-          '<ul>' +
-          htmlLinks +
-          '</ul>'
-        )
-      }
-    }
-    return null
-  }
-
-  // Get dataset's metadata description from Metax
-  function getNotesAsHtmlFromEtsinMetadata(rawEtsinMetadata) {
-    if (rawEtsinMetadata != null) {
-      let notes =
-        currentLocale == LANGUAGE.FINNISH
-          ? rawEtsinMetadata.research_dataset.description.fi
-          : rawEtsinMetadata.research_dataset.description.en
-      if (notes == null) {
-        return null
-      }
-      // Fix links from MarkDown to HTML
-      const regexp = /\[.*?\]\(http.*?\)/g
-      const matches = []
-
-      let match
-      while ((match = regexp.exec(notes)) != null) {
-        matches.push(match.index)
-      }
-      matches.reverse()
-
-      const insert = (string, index, value) => {
-        return index > 0
-          ? string.substring(0, index) +
-              value +
-              string.substring(index, string.length)
-          : value + string
-      }
-
-      $.each(matches, (loopIdx, matchIdx) => {
-        notes = insert(
-          notes,
-          matchIdx + 1,
-          '<b><a href="' +
-            notes.substring(
-              notes.indexOf('(', matchIdx) + 1,
-              notes.indexOf(')', matchIdx)
-            ) +
-            '" target="_blank">'
-        )
-        notes = insert(notes, notes.indexOf(']', matchIdx), '</a></b>')
-        notes = notes.replace(
-          notes.substring(
-            notes.indexOf('(', matchIdx),
-            notes.indexOf(')', matchIdx) + 1
-          ),
-          ''
-        )
-      })
-      notes = notes.replace(/\[|\]/g, '')
-
-      // Fix new lines from MarkDown to HTML
-      return notes.replace(/(\r\n|\n|\r)/gm, '<br>')
-    }
-    return null
-  }
-
-  function cutLicenseURL(urn) {
-    if (urn != null) {
-      const arr = urn.split('geodata/')
-      urn = arr[1]
-    }
-    return urn
-  }
-
-  function flipURN(urn) {
-    const colon = ':'
-    const dash = '-'
-    if (urn.indexOf(colon) == -1) {
-      const arr = urn.split(dash)
-      urn =
-        arr[0] +
-        colon +
-        arr[1] +
-        colon +
-        arr[2] +
-        colon +
-        arr[3] +
-        dash +
-        arr[4]
-    }
-    return urn
-  }
-
-  function fetchMetadataDescription(
-    metadataURN,
-    metadataNotes,
-    successFn,
-    errorFn
-  ) {
-    $.ajax({
-      url: URL.ETSIN_METADATA_JSON_BASE + flipURN(metadataURN),
-      success: (data) => successFn(data, metadataNotes),
-      error: () => errorFn(metadataNotes),
-    })
-  }
-
-  function setFeatureInfoTabDefaultContent() {
-    const featureInfoDefaultLabel = $('<div>', {
-      id: 'feature-info-default-label',
-    })
-    featureInfoDefaultLabel.append(translate('info.featureinfodefault'))
-    featureInfoTabContentRoot.append(featureInfoDefaultLabel)
-  }
-
   let isFirstTimeLoaded = true
   let mapsheets = 0
 
   function updateMap() {
-    map.removeLayer(currentIndexMapLayer)
+    map.removeLayer(globals.getIndexLayer())
     map.removeLayer(currentIndexMapLabelLayer)
     map.removeLayer(currentDataLayer)
-    locationSearchInput.val('')
+    locationSearch.clear()
     clearMapFeatureSelection()
-    clearInfoBoxTabs()
+    featureInfoTab.clear()
     clearSearchResults()
     $('#feature-search-field').value = ''
     if (datasets.hasCurrent()) {
       setInfoContent('metadata')
-      setFeatureInfoTabDefaultContent()
+      featureInfoTab.setDefaultLabel()
       loadIndexLayer()
       loadIndexMapLabelLayer()
 
-      if (currentIndexMapLayer !== null) {
-        currentIndexMapLayer.getSource().once('change', (event) => {
-          let hasInfoTab = false
-          if (event.target.getState() == 'ready' && isFirstTimeLoaded) {
-            hasInfoTab = datasets.hasFeatureInfo()
-            mapsheets = datasets.getCurrent().map_sheets
-            if (mapsheets > 1) {
-              featureSearchContainer.css('visibility', 'visible')
-            } else if (mapsheets === 1) {
-              // if there is only one mapsheet, select all files
-              selectedFeatures.extend(
-                currentIndexMapLayer.getSource().getFeatures()
-              )
-              featureSearchContainer.css('visibility', 'hidden')
+      if (globals.getIndexLayer() !== null) {
+        globals
+          .getIndexLayer()
+          .getSource()
+          .once('change', (event) => {
+            let hasInfoTab = false
+            if (event.target.getState() == 'ready' && isFirstTimeLoaded) {
+              hasInfoTab = datasets.hasFeatureInfo()
+              mapsheets = datasets.getCurrent().map_sheets
+              if (mapsheets > 1) {
+                featureSearchContainer.css('visibility', 'visible')
+              } else if (mapsheets === 1) {
+                // if there is only one mapsheet, select all files
+                globals
+                  .getSelectedFeatures()
+                  .extend(globals.getIndexLayer().getSource().getFeatures())
+                featureSearchContainer.css('visibility', 'hidden')
+              }
+              setInfoContent('download')
+              isFirstTimeLoaded = false
+              toggleMapControlButtonsVisibility()
             }
-            setInfoContent('download')
-            isFirstTimeLoaded = false
-            toggleMapControlButtonsVisibility()
-          }
-          selectTabAfterDatasetChange(hasInfoTab)
-        })
+            selectTabAfterDatasetChange(hasInfoTab)
+          })
 
         if (currentIndexMapLabelLayer !== null) {
-          currentIndexMapLayer.on('change:visible', () => {
-            if (currentIndexMapLayer.getVisible()) {
+          globals.getIndexLayer().on('change:visible', () => {
+            if (globals.getIndexLayer().getVisible()) {
               currentIndexMapLabelLayer.setVisible(true)
             } else {
               currentIndexMapLabelLayer.setVisible(false)
@@ -938,7 +352,7 @@ function main() {
         } else {
           setDataAvailabiltyWarning()
         }
-        map.addLayer(currentIndexMapLayer)
+        map.addLayer(globals.getIndexLayer())
         if (currentIndexMapLabelLayer !== null) {
           map.addLayer(currentIndexMapLabelLayer)
         }
@@ -1024,19 +438,21 @@ function main() {
         },
       })
 
-      currentIndexMapLayer = new layer.Vector({
-        title: translate('map.indexmap'),
-        source: indexSource,
-        visible: true,
-        style: new style.Style({
-          stroke: new style.Stroke({
-            color: 'rgba(0, 0, 255, 1.0)',
-            width: 2,
+      globals.setIndexLayer(
+        new layer.Vector({
+          title: translate('map.indexmap'),
+          source: indexSource,
+          visible: true,
+          style: new style.Style({
+            stroke: new style.Stroke({
+              color: 'rgba(0, 0, 255, 1.0)',
+              width: 2,
+            }),
           }),
-        }),
-      })
+        })
+      )
     } else {
-      currentIndexMapLayer = null
+      globals.setIndexLayer(null)
     }
     isFirstTimeLoaded = true
   }
@@ -1080,14 +496,17 @@ function main() {
 
   function getSearchResultFeatures(searchStr) {
     const hits = []
-    currentIndexMapLayer.getSource().forEachFeature((feature) => {
-      if (
-        feature.get('label').toLowerCase().indexOf(searchStr.toLowerCase()) !=
-        -1
-      ) {
-        hits.push(feature)
-      }
-    })
+    globals
+      .getIndexLayer()
+      .getSource()
+      .forEachFeature((feature) => {
+        if (
+          feature.get('label').toLowerCase().indexOf(searchStr.toLowerCase()) !=
+          -1
+        ) {
+          hits.push(feature)
+        }
+      })
     return hits
   }
 
@@ -1194,34 +613,17 @@ function main() {
     style: selected_style,
     multi: true, //Select several, if overlapping
   })
-
   featureSelectInteraction.on('select', () => setInfoContent('download'))
 
   const selectedFeatures = featureSelectInteraction.getFeatures()
-
-  selectedFeatures.on('add', (event) => {
-    fileLabels.push(event.element.get('label'))
-  })
-
-  selectedFeatures.on('remove', (event) => {
-    const deleteIdx = fileLabels.indexOf(event.element.get('label'))
-    if (deleteIdx > -1) {
-      fileLabels.splice(deleteIdx, 1)
-    }
-  })
+  selectedFeatures.on('add', downloadTab.addFileLabel)
+  selectedFeatures.on('remove', downloadTab.removeFileLabel)
+  globals.setSelectedFeatures(selectedFeatures)
 
   function clearMapFeatureSelection() {
-    selectedFeatures.clear()
+    globals.getSelectedFeatures().clear()
     setInfoContent('download')
-
     return false
-  }
-
-  function getTotalDownloadSize() {
-    const fileSize = datasets.getCurrent().file_size
-    return fileSize !== null
-      ? Math.ceil(fileSize * selectedFeatures.getLength())
-      : 0
   }
 
   map.addInteraction(featureSelectInteraction)
@@ -1237,10 +639,11 @@ function main() {
     const oldFeaturesInSelection = []
     let existing
 
-    currentIndexMapLayer
+    globals
+      .getIndexLayer()
       .getSource()
       .forEachFeatureIntersectingExtent(extent, (feature) => {
-        existing = selectedFeatures.remove(feature)
+        existing = globals.getSelectedFeatures().remove(feature)
         if (existing) {
           oldFeaturesInSelection.push(feature)
         } else {
@@ -1248,8 +651,8 @@ function main() {
         }
       })
     if (newFeatures.length > 0) {
-      selectedFeatures.extend(oldFeaturesInSelection)
-      selectedFeatures.extend(newFeatures)
+      globals.getSelectedFeatures().extend(oldFeaturesInSelection)
+      globals.getSelectedFeatures().extend(newFeatures)
     }
     setInfoContent('download')
   })
@@ -1282,7 +685,7 @@ function main() {
 
   function updateDrawSelection(event) {
     const polygon = event.feature.getGeometry()
-    const features = currentIndexMapLayer.getSource().getFeatures()
+    const features = globals.getIndexLayer().getSource().getFeatures()
 
     const newFeatures = []
     const oldFeaturesInSelection = []
@@ -1290,7 +693,7 @@ function main() {
 
     for (let i = 0; i < features.length; i++) {
       if (polygon.intersectsExtent(features[i].getGeometry().getExtent())) {
-        existing = selectedFeatures.remove(features[i])
+        existing = globals.getSelectedFeatures().remove(features[i])
         if (existing) {
           oldFeaturesInSelection.push(features[i])
         } else {
@@ -1300,8 +703,8 @@ function main() {
     }
 
     if (newFeatures.length > 0) {
-      selectedFeatures.extend(oldFeaturesInSelection)
-      selectedFeatures.extend(newFeatures)
+      globals.getSelectedFeatures().extend(oldFeaturesInSelection)
+      globals.getSelectedFeatures().extend(newFeatures)
     }
     setInfoContent('download')
     //Remove the drawed polygon from map. The drawend is fired before the polygon is added to the source,
@@ -1358,6 +761,7 @@ function main() {
 
   function selectSelectTool() {
     selectTab(0)
+
     $('#panselection-button').removeClass('active')
     $('#selectselection-button').addClass('active')
     $('#infoselection-button').removeClass('active')
@@ -1373,6 +777,7 @@ function main() {
 
   function selectInfoTool() {
     selectTab(1)
+
     $('#panselection-button').removeClass('active')
     $('#selectselection-button').removeClass('active')
     $('#infoselection-button').addClass('active')
@@ -1392,6 +797,7 @@ function main() {
 
   function selectDrawTool() {
     selectTab(0)
+
     $('#panselection-button').removeClass('active')
     $('#selectselection-button').removeClass('active')
     $('#infoselection-button').removeClass('active')
@@ -1412,38 +818,6 @@ function main() {
 
   const scaleLineControl = new control.ScaleLine()
 
-  function initLocationSearch() {
-    locationSearchInput.keypress((event) => {
-      const keyCode = event.keyCode || event.charCode
-      if (keyCode == 13) {
-        const searchStr = locationSearchInput.val()
-        if (searchStr.length > 0) {
-          const queryUrl = URL.NOMINATIM_API.replace('!query!', searchStr)
-          $.getJSON(queryUrl, (data) => {
-            if (data.length > 0) {
-              map
-                .getView()
-                .setCenter(
-                  proj.transform(
-                    [Number(data[0].lon), Number(data[0].lat)],
-                    'EPSG:4326',
-                    'EPSG:3857'
-                  )
-                )
-              if (searchStr.indexOf(',') != -1) {
-                map.getView().setZoom(16)
-              } else {
-                map.getView().setZoom(13)
-              }
-            } else {
-              alert(translate('map.locationNotFound'))
-            }
-          })
-        }
-      }
-    })
-  }
-
   $('#resetview-button').on('click', resetMapView)
   $('#panselection-button').on('click', selectPanTool)
   $('#selectselection-button').on('click', selectSelectTool)
@@ -1458,7 +832,7 @@ function main() {
   map.addControl(scaleLineControl)
 
   datasetSelect.init(updateMap, pageDataIdParam)
-  initLocationSearch()
+  locationSearch.init(map)
   createSearchField()
 
   resetMapView()
