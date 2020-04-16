@@ -1,9 +1,9 @@
 import $ from 'jquery'
 
-import { translate } from '../../shared/translations'
-import globals from '../globals'
-import datasets from '../datasets'
-import emailModal from './emailModal'
+import datasets from '../../datasets'
+import emailModal from '../emailModal'
+import map from '../map'
+import { translate } from '../../../shared/translations'
 
 const MAX_DOWNLOADABLE_SIZE = 3000
 const TAB_ID = 'download-container'
@@ -13,8 +13,8 @@ const rootElem = $('#' + TAB_ID)
 let filePaths = []
 let fileLabels = []
 
-function init(highlightOverlay) {
-  highlightOverlay.getSource().clear()
+function init() {
+  map.clearHighlights()
 
   // Download and download list buttons are inside wrappers so that
   // tooltips can be attached to wrappers instead of buttons. This way
@@ -102,7 +102,7 @@ function init(highlightOverlay) {
   })
   downloadFilesHeader.text(translate('info.files'))
 
-  const selectedFeatures = globals.getSelectedFeatures()
+  const selectedFeatures = map.getSelectedFeatures()
   if (selectedFeatures.getLength() > 0) {
     let dataListContainerElem = $('#data-download-list')
     if (!dataListContainerElem.length) {
@@ -159,20 +159,11 @@ function init(highlightOverlay) {
       })
       dlLabel.hover(
         (event) => {
-          highlightOverlay.getSource().clear()
-          const olId = globals
-            .getIndexLayer()
-            .getSource()
-            .getFeatureById($(event.target).attr('ol_id'))
-          highlightOverlay.getSource().addFeature(olId)
+          map.addHighlight(event)
           dlLabel.css('font-weight', 'bold')
         },
         (event) => {
-          const olId = globals
-            .getIndexLayer()
-            .getSource()
-            .getFeatureById($(event.target).attr('ol_id'))
-          highlightOverlay.getSource().removeFeature(olId)
+          map.removeHighlight(event)
           dlLabel.css('font-weight', 'normal')
         }
       )
@@ -187,7 +178,7 @@ function init(highlightOverlay) {
         return -1
       }
     })
-    $.each(dlLabelList, (idx, val) => val.appendTo(dataListContainerElem))
+    dlLabelList.forEach((val) => val.appendTo(dataListContainerElem))
     if (i > 0) {
       dataListContainerElem.appendTo(rootElem)
     }
@@ -233,15 +224,15 @@ function init(highlightOverlay) {
 function getDownloadSize() {
   const fileSize = datasets.getCurrent().file_size
   return fileSize !== null
-    ? Math.ceil(fileSize * globals.getSelectedFeatures().getLength())
+    ? Math.ceil(fileSize * map.getSelectedFeatures().getLength())
     : 0
 }
 
 function updateSelectedFeatures(clickedFeature, dlInput) {
   if (dlInput.is(':checked')) {
-    globals.getSelectedFeatures().push(clickedFeature)
+    map.getSelectedFeatures().push(clickedFeature)
   } else {
-    globals.getSelectedFeatures().remove(clickedFeature)
+    map.getSelectedFeatures().remove(clickedFeature)
   }
 }
 
@@ -308,11 +299,11 @@ function cutLicenseURL(urn) {
   return urn
 }
 
-function addFileLabel(event) {
+function addFile(event) {
   fileLabels.push(event.element.get('label'))
 }
 
-function removeFileLabel(event) {
+function removeFile(event) {
   const deleteIdx = fileLabels.indexOf(event.element.get('label'))
   if (deleteIdx > -1) {
     fileLabels.splice(deleteIdx, 1)
@@ -322,6 +313,6 @@ function removeFileLabel(event) {
 export default {
   TAB_ID,
   init,
-  addFileLabel,
-  removeFileLabel,
+  addFile,
+  removeFile,
 }
