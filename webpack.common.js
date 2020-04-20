@@ -1,7 +1,7 @@
 const path = require('path')
+const CopyPlugin = require('copy-webpack-plugin')
 
 module.exports = {
-  mode: 'development',
   entry: {
     download: './src/download/download.js',
     metadata: './src/metadata/metadata.js',
@@ -11,31 +11,11 @@ module.exports = {
     filename: '[name].js',
     path: __dirname + '/dist',
   },
-  devtool: 'inline-source-map',
-  devServer: {
-    contentBase: './dist',
-    openPage: 'download.html',
-    port: 9000,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8080',
-        pathRewrite: { '^/api': '' },
-      },
-    },
-  },
   module: {
     rules: [
       {
         test: /\.css$/,
-        use: ['style-loader', 'css-loader'],
-      },
-      {
-        test: /\.(png|jpe?g|gif)$/i,
-        use: [
-          {
-            loader: 'file-loader',
-          },
-        ],
+        use: ['style-loader', 'css-loader?url=false'],
       },
       {
         test: /\.m?js$/,
@@ -48,5 +28,21 @@ module.exports = {
         },
       },
     ],
+  },
+  plugins: [
+    new CopyPlugin([
+      {
+        from: 'html/*.html',
+        flatten: true,
+      },
+    ]),
+  ],
+  optimization: {
+    splitChunks: {
+      chunks: 'all',
+    },
+  },
+  performance: {
+    hints: false,
   },
 }
