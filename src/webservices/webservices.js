@@ -13,7 +13,9 @@ import { getCurrentLocale } from '../shared/translations'
 import 'bootstrap/dist/css/bootstrap.min.css'
 import 'bootstrap-table/dist/bootstrap-table.min.css'
 import 'jquery-ui-bundle/jquery-ui.css'
-import '../../css/metadata.css'
+
+import '../../css/main.css'
+import '../../css/webservices.css'
 
 const filterControlPlaceholder = translate('metadataTable.filter')
 
@@ -68,4 +70,6 @@ $('#table').bootstrapTable({
 
 $(function () {
   $('#header').load('header.html')
+  $('.content-placeholder').html(translate('webservices.content'))
+
 })
