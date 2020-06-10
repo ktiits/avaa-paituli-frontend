@@ -5,8 +5,8 @@
   "private": true,
   "scripts": {
     "start": "webpack-dev-server --open --config webpack.dev.js",
-    "build": "npm run clean && webpack --progress --config webpack.prod.js",
-    "build-test": "npm run clean && webpack --progress --config webpack.test.js",
+    "build": "npm run clean && npx webpack --progress --config webpack.prod.js",
+    "build-test": "npm run clean && npx webpack --progress --config webpack.test.js",
     "clean": "rm -rf dist",
     "lint": "eslint . --ext .js",
     "lint:fix": "npm run lint -- --fix"
