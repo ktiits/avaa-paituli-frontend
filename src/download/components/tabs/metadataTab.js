@@ -74,7 +74,8 @@ function getMetadataFileLinksFromMetax(rawMetadata) {
     const htmlLinks = rawMetadata.research_dataset.remote_resources
       .filter(hasFileLink)
       .map(toHtmlLink)
-
+      .join('')
+    console.log(htmlLinks)
     if (htmlLinks.length > 0) {
       return (
         '<br>' +
