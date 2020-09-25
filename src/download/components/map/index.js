@@ -27,7 +27,6 @@ function update() {
     layers.init()
     const indexLayer = layers.getIndexLayer()
     const dataLayer = layers.getDataLayer()
-
     if (indexLayer !== null) {
       indexLayer.getSource().once('change', (event) => {
         let hasInfoTab = false
